@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -219,5 +220,31 @@ func TestSyncAllPartialFailure(t *testing.T) {
 	}
 	if out.Garmin.Status != "error" || out.Garmin.Error == nil {
 		t.Errorf("garmin = %+v, want error", out.Garmin)
+	}
+}
+
+func TestRunTickerCallsAndStops(t *testing.T) {
+	var calls int32
+	fn := func(ctx context.Context) { atomic.AddInt32(&calls, 1) }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		RunTicker(ctx, 10*time.Millisecond, fn)
+		close(done)
+	}()
+
+	// Let a few ticks happen, then cancel.
+	time.Sleep(55 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("RunTicker did not stop within 1s of cancel")
+	}
+
+	if n := atomic.LoadInt32(&calls); n < 1 {
+		t.Errorf("tick calls = %d, want >= 1", n)
 	}
 }
