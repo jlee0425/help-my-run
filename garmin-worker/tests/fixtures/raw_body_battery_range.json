@@ -1,0 +1,14 @@
+[
+  {
+    "date": "2026-06-14",
+    "charged": 60,
+    "drained": 75,
+    "bodyBatteryValuesArray": [[1718323200000, "ACTIVE", 88], [1718366400000, "ACTIVE", 16]]
+  },
+  {
+    "date": "2026-06-15",
+    "charged": 62,
+    "drained": 78,
+    "bodyBatteryValuesArray": [[1718409600000, "ACTIVE", 91], [1718452800000, "ACTIVE", 14]]
+  }
+]
