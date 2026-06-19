@@ -124,3 +124,86 @@ func TestConnectURL(t *testing.T) {
 
 func i64(v int64) *int64 { return &v }
 func ptrTime() string    { return time.Now().UTC().Format(time.RFC3339) }
+
+func TestActivitiesHandler(t *testing.T) {
+	h, s := newTestServer(t)
+	_ = s.UpsertActivity(store.Activity{
+		StravaID: 11, Name: "A", Type: "Run", SportType: sp("Run"),
+		StartTime: "2026-06-18T06:00:00Z", StartTimeLocal: sp("2026-06-18T08:00:00"),
+		DistanceM: 10000, MovingTimeS: 3000, ElapsedTimeS: 3050,
+		AvgHR: fp(150), RawJSON: "{}",
+	})
+	_ = s.UpsertActivity(store.Activity{
+		StravaID: 12, Name: "B", Type: "Run", SportType: nil,
+		StartTime: "2026-06-17T06:00:00Z", DistanceM: 5000,
+		MovingTimeS: 1500, ElapsedTimeS: 1500, RawJSON: "{}",
+	})
+
+	rec := do(t, h, http.MethodGet, "/api/activities", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body activitiesResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Activities) != 2 {
+		t.Fatalf("len = %d, want 2", len(body.Activities))
+	}
+	// Most-recent-first.
+	if body.Activities[0].StravaID != 11 {
+		t.Errorf("first id = %d, want 11", body.Activities[0].StravaID)
+	}
+	if body.Activities[0].AvgHR == nil || *body.Activities[0].AvgHR != 150 {
+		t.Errorf("avg_hr = %v, want 150", body.Activities[0].AvgHR)
+	}
+	if body.Activities[1].SportType != nil {
+		t.Errorf("sport_type = %v, want null", body.Activities[1].SportType)
+	}
+
+	// limit=1 clamps.
+	rec = do(t, h, http.MethodGet, "/api/activities?limit=1", testToken)
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if len(body.Activities) != 1 {
+		t.Errorf("limit=1 len = %d, want 1", len(body.Activities))
+	}
+}
+
+func TestRecoveryHandler(t *testing.T) {
+	h, s := newTestServer(t)
+	_ = s.UpsertSleep(store.SleepRow{Date: "2026-06-18", DurationS: i64(27000), Score: i64(82), RawJSON: "{}"})
+	_ = s.UpsertRhr(store.RhrRow{Date: "2026-06-18", RestingHR: i64(47), RawJSON: "{}"})
+	// 06-17: rhr only.
+	_ = s.UpsertRhr(store.RhrRow{Date: "2026-06-17", RestingHR: i64(49), RawJSON: "{}"})
+
+	rec := do(t, h, http.MethodGet, "/api/recovery", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body recoveryResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Recovery) != 2 {
+		t.Fatalf("len = %d, want 2", len(body.Recovery))
+	}
+	d18 := body.Recovery[0]
+	if d18.Date != "2026-06-18" || d18.Sleep == nil || d18.Sleep.Score == nil || *d18.Sleep.Score != 82 {
+		t.Errorf("06-18 sleep wrong: %+v", d18)
+	}
+	if d18.HRV != nil || d18.BodyBattery != nil {
+		t.Errorf("06-18 hrv/bb = %v/%v, want both null", d18.HRV, d18.BodyBattery)
+	}
+	if d18.RHR == nil || *d18.RHR.RestingHR != 47 {
+		t.Errorf("06-18 rhr wrong: %+v", d18.RHR)
+	}
+	// days=1 clamps to the most-recent date.
+	rec = do(t, h, http.MethodGet, "/api/recovery?days=1", testToken)
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if len(body.Recovery) != 1 || body.Recovery[0].Date != "2026-06-18" {
+		t.Errorf("days=1 = %+v, want single 2026-06-18", body.Recovery)
+	}
+}
+
+func sp(v string) *string  { return &v }
+func fp(v float64) *float64 { return &v }
