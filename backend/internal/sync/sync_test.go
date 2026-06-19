@@ -4,10 +4,14 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
 )
@@ -100,5 +104,85 @@ func TestSyncStravaNotConnected(t *testing.T) {
 	sl, _ := s.GetSyncLog("strava")
 	if sl.Status != "error" {
 		t.Errorf("sync_log status = %q, want error", sl.Status)
+	}
+}
+
+func TestSyncGarminUpsertsAllTables(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	s := newStore(t)
+
+	fixture, err := filepath.Abs(filepath.Join("..", "garmin", "testdata", "worker_output.json"))
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	// Stub "worker": a shell script that cats the fixture and ignores the fetch
+	// args. (GNU coreutils `cat` rejects the runner's `--since` flag as an
+	// unknown option, so a /bin/sh script is used instead of /bin/cat.)
+	script := filepath.Join(t.TempDir(), "stub.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ncat '"+fixture+"'\n"), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	r := garmin.Runner{Python: "/bin/sh", Script: script}
+
+	res := SyncGarmin(context.Background(), s, r, nil)
+	if res.Status != "ok" || res.Error != nil {
+		t.Fatalf("result = %+v, want ok", res)
+	}
+	// Fixture has 2 sleep + 1 hrv + 2 bb + 2 rhr = 7 upserts.
+	if res.Synced != 7 {
+		t.Errorf("synced = %d, want 7", res.Synced)
+	}
+
+	counts := map[string]int{
+		"garmin_sleep": 0, "garmin_hrv": 0, "garmin_body_battery": 0, "garmin_rhr": 0,
+	}
+	for tbl := range counts {
+		var n int
+		if err := s.DB.QueryRow(`SELECT COUNT(*) FROM ` + tbl).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", tbl, err)
+		}
+		counts[tbl] = n
+	}
+	if counts["garmin_sleep"] != 2 || counts["garmin_hrv"] != 1 ||
+		counts["garmin_body_battery"] != 2 || counts["garmin_rhr"] != 2 {
+		t.Errorf("counts = %+v, want sleep2 hrv1 bb2 rhr2", counts)
+	}
+
+	// raw_json persisted from the worker.
+	var raw string
+	_ = s.DB.QueryRow(`SELECT raw_json FROM garmin_sleep WHERE date='2026-06-14'`).Scan(&raw)
+	if !strings.Contains(raw, "dailySleepDTO") {
+		t.Errorf("sleep raw_json = %q, want it to contain dailySleepDTO", raw)
+	}
+
+	sl, _ := s.GetSyncLog("garmin")
+	if sl.Status != "ok" || sl.LastSyncedAt == nil {
+		t.Errorf("sync_log = %+v, want ok with last_synced_at", sl)
+	}
+}
+
+func TestSyncGarminError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	s := newStore(t)
+	script := filepath.Join(t.TempDir(), "fail.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho 're-run worker.py login' 1>&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	r := garmin.Runner{Python: "/bin/sh", Script: script}
+
+	res := SyncGarmin(context.Background(), s, r, nil)
+	if res.Status != "error" || res.Error == nil {
+		t.Fatalf("result = %+v, want error", res)
+	}
+	if !strings.Contains(*res.Error, "re-run worker.py login") {
+		t.Errorf("error = %q, want stderr surfaced", *res.Error)
+	}
+	sl, _ := s.GetSyncLog("garmin")
+	if sl.Status != "error" || sl.Error == nil {
+		t.Errorf("sync_log = %+v, want error", sl)
 	}
 }

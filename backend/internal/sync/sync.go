@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
 )
@@ -154,4 +155,72 @@ func mapLaps(activityID int64, laps []strava.Lap) []store.Split {
 		})
 	}
 	return out
+}
+
+// garminBackfillDays is the default look-back when Garmin has never synced.
+const garminBackfillDays = 30
+
+// SyncGarmin runs the Python worker since the last successful Garmin sync (or a
+// ~30-day backfill), upserts the four garmin_* tables, and records sync_log.
+func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv []string) SourceResult {
+	const source = "garmin"
+
+	since := time.Now().AddDate(0, 0, -garminBackfillDays).Format("2006-01-02")
+	if sl, err := s.GetSyncLog(source); err == nil && sl.LastSyncedAt != nil {
+		if ts, perr := time.Parse(time.RFC3339, *sl.LastSyncedAt); perr == nil {
+			since = ts.Format("2006-01-02")
+		}
+	}
+
+	out, err := r.RunGarminFetch(ctx, since, extraEnv)
+	if err != nil {
+		return errResult(s, source, err)
+	}
+
+	synced := 0
+	for _, d := range out.Sleep {
+		if err := s.UpsertSleep(store.SleepRow{
+			Date: d.Date, DurationS: d.DurationS, DeepS: d.DeepS, LightS: d.LightS,
+			RemS: d.RemS, AwakeS: d.AwakeS, Score: d.Score, RawJSON: rawString(d.RawJSON),
+		}); err != nil {
+			return errResult(s, source, err)
+		}
+		synced++
+	}
+	for _, d := range out.HRV {
+		if err := s.UpsertHrv(store.HrvRow{
+			Date: d.Date, LastNightAvgMs: d.LastNightAvgMs, Status: d.Status,
+			RawJSON: rawString(d.RawJSON),
+		}); err != nil {
+			return errResult(s, source, err)
+		}
+		synced++
+	}
+	for _, d := range out.BodyBattery {
+		if err := s.UpsertBodyBattery(store.BodyBatteryRow{
+			Date: d.Date, Charged: d.Charged, Drained: d.Drained, High: d.High, Low: d.Low,
+			RawJSON: rawString(d.RawJSON),
+		}); err != nil {
+			return errResult(s, source, err)
+		}
+		synced++
+	}
+	for _, d := range out.RHR {
+		if err := s.UpsertRhr(store.RhrRow{
+			Date: d.Date, RestingHR: d.RestingHR, RawJSON: rawString(d.RawJSON),
+		}); err != nil {
+			return errResult(s, source, err)
+		}
+		synced++
+	}
+	return okResult(s, source, synced)
+}
+
+// rawString renders a json.RawMessage to a string for the raw_json column,
+// defaulting to "null" when empty.
+func rawString(m json.RawMessage) string {
+	if len(m) == 0 {
+		return "null"
+	}
+	return string(m)
 }
