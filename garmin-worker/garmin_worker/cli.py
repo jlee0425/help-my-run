@@ -18,7 +18,7 @@ import json
 import sys
 from typing import Optional, Sequence
 
-from . import normalize
+from . import client, normalize
 
 PROG = "worker.py"
 
@@ -97,9 +97,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "login":
-        # Live login wiring is added in Task 15.
-        print("login is not wired yet", file=sys.stderr)
-        return 1
+        try:
+            client.GarminClient.login_interactive(prompt_mfa=lambda: input("MFA code: "))
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        except Exception as exc:  # garminconnect auth/connection errors
+            print(f"login failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"login ok; tokens saved to {client.tokenstore_path()}", file=sys.stderr)
+        return 0
 
     # command == "fetch"
     try:
