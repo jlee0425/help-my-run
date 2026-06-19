@@ -207,3 +207,106 @@ func TestRecoveryHandler(t *testing.T) {
 
 func sp(v string) *string  { return &v }
 func fp(v float64) *float64 { return &v }
+
+func TestStravaCallbackExchangesAndPersists(t *testing.T) {
+	// Fake Strava token endpoint.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/token" {
+			t.Errorf("path = %s, want /oauth/token", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token_type":"Bearer","access_token":"acc","refresh_token":"ref","expires_at":4102444800,"expires_in":21600,"scope":"read,activity:read_all","athlete":{"id":777}}`))
+	}))
+	defer srv.Close()
+
+	s, err := store.Open(filepath.Join(t.TempDir(), "cb.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.Migrate(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	deps := Deps{
+		Store:    s,
+		Strava:   strava.NewWithBase("12345", "secret", "http://localhost:8080/api/strava/callback", srv.URL),
+		APIToken: testToken,
+		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) { return "ok", 0, nil, "ok", 0, nil },
+	}
+	h := NewRouter(deps)
+
+	// Callback has NO auth header.
+	rec := do(t, h, http.MethodGet, "/api/strava/callback?code=the-code&scope=read,activity:read_all&state=xyz", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "You can close this tab.") {
+		t.Errorf("body = %q, want close-tab text", rec.Body.String())
+	}
+	tok, err := s.GetStravaTokens()
+	if err != nil {
+		t.Fatalf("tokens not persisted: %v", err)
+	}
+	if tok.AccessToken != "acc" || tok.RefreshToken != "ref" || tok.AthleteID != 777 {
+		t.Errorf("tokens = %+v, want acc/ref/777", tok)
+	}
+}
+
+func TestStravaCallbackAccessDenied(t *testing.T) {
+	h, s := newTestServer(t)
+	rec := do(t, h, http.MethodGet, "/api/strava/callback?error=access_denied", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(strings.ToLower(rec.Body.String()), "failed") {
+		t.Errorf("body = %q, want failure text", rec.Body.String())
+	}
+	// No tokens stored.
+	if _, err := s.GetStravaTokens(); err != store.ErrNotFound {
+		t.Errorf("GetStravaTokens err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSyncHandler(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "sync.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.Migrate(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	gerr := "worker exit 1: re-run worker.py login"
+	deps := Deps{
+		Store:    s,
+		Strava:   strava.NewWithBase("1", "x", "http://cb", "http://unused"),
+		APIToken: testToken,
+		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
+			return "ok", 3, nil, "error", 0, &gerr
+		},
+	}
+	h := NewRouter(deps)
+
+	rec := do(t, h, http.MethodPost, "/api/sync", testToken)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body syncResp
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Strava.Status != "ok" || body.Strava.Synced != 3 {
+		t.Errorf("strava = %+v, want ok/3", body.Strava)
+	}
+	if body.Garmin.Status != "error" || body.Garmin.Error == nil || *body.Garmin.Error != gerr {
+		t.Errorf("garmin = %+v, want error with %q", body.Garmin, gerr)
+	}
+}
+
+func TestSyncRequiresAuth(t *testing.T) {
+	h, _ := newTestServer(t)
+	rec := do(t, h, http.MethodPost, "/api/sync", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
