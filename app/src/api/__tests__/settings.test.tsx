@@ -21,10 +21,31 @@ afterEach(() => {
 
 describe('useSettings', () => {
   it('loads stored baseUrl + token on mount', async () => {
-    mockGetBaseUrl.mockResolvedValue('http://localhost:8080');
-    mockGetToken.mockResolvedValue('stored-token');
+    // Defer resolution so the loading flag's true state is observable before
+    // the mount effect settles. (renderHook is async in this version of
+    // @testing-library/react-native, so a plain mockResolvedValue would have
+    // already flushed the effect by the time the awaited render resolves.)
+    let resolveBaseUrl!: (v: string) => void;
+    let resolveToken!: (v: string) => void;
+    mockGetBaseUrl.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveBaseUrl = resolve;
+      }),
+    );
+    mockGetToken.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolveToken = resolve;
+      }),
+    );
 
     const { result } = await renderHook(() => useSettings());
+
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      resolveBaseUrl('http://localhost:8080');
+      resolveToken('stored-token');
+    });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.baseUrl).toBe('http://localhost:8080');
