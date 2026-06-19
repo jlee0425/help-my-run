@@ -75,10 +75,31 @@ func randomState() string {
 	return hex.EncodeToString(b)
 }
 
-// --- handlers completed in the next tasks; minimal compiling stubs for now ---
-
 func (h *handlers) stravaCallback(w http.ResponseWriter, r *http.Request) {
-	writeHTML(w, "You can close this tab.")
+	if r.URL.Query().Get("error") != "" || r.URL.Query().Get("code") == "" {
+		writeHTML(w, "Strava connection failed. You can close this tab.")
+		return
+	}
+	code := r.URL.Query().Get("code")
+	tok, err := h.d.Strava.Exchange(r.Context(), code)
+	if err != nil {
+		writeHTML(w, "Strava connection failed. You can close this tab.")
+		return
+	}
+	st := store.StravaTokens{
+		AccessToken:  tok.AccessToken,
+		RefreshToken: tok.RefreshToken,
+		ExpiresAt:    tok.ExpiresAt,
+		Scope:        tok.Scope,
+	}
+	if tok.Athlete != nil {
+		st.AthleteID = tok.Athlete.ID
+	}
+	if err := h.d.Store.SaveStravaTokens(st); err != nil {
+		writeHTML(w, "Strava connection failed. You can close this tab.")
+		return
+	}
+	writeHTML(w, "Strava connected. You can close this tab.")
 }
 
 func (h *handlers) sync(w http.ResponseWriter, r *http.Request) {
@@ -164,5 +185,3 @@ func writeHTML(w http.ResponseWriter, msg string) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("<!doctype html><html><body><p>" + msg + "</p></body></html>"))
 }
-
-var _ = store.ErrNotFound // store import kept for upcoming handlers
