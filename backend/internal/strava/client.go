@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -99,4 +100,61 @@ func (c *Client) postToken(ctx context.Context, form url.Values) (*TokenResponse
 		return nil, fmt.Errorf("strava token parse: %w", err)
 	}
 	return &tok, nil
+}
+
+const perPage = 200
+
+// ListActivities returns all activities after the given unix-second timestamp,
+// paginating until Strava returns an empty page.
+func (c *Client) ListActivities(ctx context.Context, accessToken string, after int64) ([]SummaryActivity, error) {
+	var all []SummaryActivity
+	for page := 1; ; page++ {
+		q := url.Values{}
+		if after > 0 {
+			q.Set("after", strconv.FormatInt(after, 10))
+		}
+		q.Set("page", strconv.Itoa(page))
+		q.Set("per_page", strconv.Itoa(perPage))
+
+		var batch []SummaryActivity
+		if err := c.getJSON(ctx, accessToken,
+			"/api/v3/athlete/activities?"+q.Encode(), &batch); err != nil {
+			return nil, err
+		}
+		if len(batch) == 0 {
+			break
+		}
+		all = append(all, batch...)
+	}
+	return all, nil
+}
+
+// ListLaps returns the laps for an activity.
+func (c *Client) ListLaps(ctx context.Context, accessToken string, activityID int64) ([]Lap, error) {
+	var laps []Lap
+	path := "/api/v3/activities/" + strconv.FormatInt(activityID, 10) + "/laps"
+	if err := c.getJSON(ctx, accessToken, path, &laps); err != nil {
+		return nil, err
+	}
+	return laps, nil
+}
+
+// getJSON performs an authenticated GET and unmarshals the JSON body into dst.
+func (c *Client) getJSON(ctx context.Context, accessToken, path string, dst any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("strava GET %s: status %d: %s", path, resp.StatusCode, string(body))
+	}
+	return json.Unmarshal(body, dst)
 }

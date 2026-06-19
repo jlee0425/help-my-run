@@ -119,3 +119,73 @@ func TestExchangeNon200(t *testing.T) {
 		t.Fatal("Exchange on 400 error = nil, want error")
 	}
 }
+
+func TestListActivitiesPaginates(t *testing.T) {
+	var sawAuth string
+	var afterParam string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/athlete/activities" {
+			t.Errorf("path = %s, want /api/v3/athlete/activities", r.URL.Path)
+		}
+		sawAuth = r.Header.Get("Authorization")
+		afterParam = r.URL.Query().Get("after")
+		w.Header().Set("Content-Type", "application/json")
+		// Page 1 -> fixture (2 activities); page 2+ -> empty array (stop).
+		if r.URL.Query().Get("page") == "1" {
+			_, _ = w.Write(loadFixture(t, "strava_activities.json"))
+		} else {
+			_, _ = w.Write([]byte(`[]`))
+		}
+	})
+
+	acts, err := c.ListActivities(context.Background(), "access-tok", 1718600000)
+	if err != nil {
+		t.Fatalf("ListActivities error = %v", err)
+	}
+	if sawAuth != "Bearer access-tok" {
+		t.Errorf("Authorization = %q, want %q", sawAuth, "Bearer access-tok")
+	}
+	if afterParam != "1718600000" {
+		t.Errorf("after = %q, want 1718600000", afterParam)
+	}
+	if len(acts) != 2 {
+		t.Fatalf("activities len = %d, want 2", len(acts))
+	}
+	if acts[0].ID != 14820001234 || acts[0].SportType != "Run" {
+		t.Errorf("act0 = id %d sport %q, want 14820001234 Run", acts[0].ID, acts[0].SportType)
+	}
+	if acts[0].AverageHeartrate == nil || *acts[0].AverageHeartrate != 152.3 {
+		t.Errorf("act0.AverageHeartrate = %v, want 152.3", acts[0].AverageHeartrate)
+	}
+	// Second run has no HR -> pointer nil.
+	if acts[1].AverageHeartrate != nil {
+		t.Errorf("act1.AverageHeartrate = %v, want nil", acts[1].AverageHeartrate)
+	}
+}
+
+func TestListLaps(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/activities/14820001234/laps" {
+			t.Errorf("path = %s, want /api/v3/activities/14820001234/laps", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer access-tok" {
+			t.Errorf("Authorization = %q, want Bearer access-tok", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(loadFixture(t, "strava_laps.json"))
+	})
+
+	laps, err := c.ListLaps(context.Background(), "access-tok", 14820001234)
+	if err != nil {
+		t.Fatalf("ListLaps error = %v", err)
+	}
+	if len(laps) != 2 {
+		t.Fatalf("laps len = %d, want 2", len(laps))
+	}
+	if laps[0].LapIndex != 1 || laps[0].Distance != 1000.0 {
+		t.Errorf("lap0 = idx %d dist %v, want 1 1000", laps[0].LapIndex, laps[0].Distance)
+	}
+	if laps[1].AverageHeartrate != nil {
+		t.Errorf("lap1.AverageHeartrate = %v, want nil", laps[1].AverageHeartrate)
+	}
+}
