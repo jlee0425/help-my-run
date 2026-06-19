@@ -186,3 +186,38 @@ func TestSyncGarminError(t *testing.T) {
 		t.Errorf("sync_log = %+v, want error", sl)
 	}
 }
+
+func TestSyncAllPartialFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	s := newStore(t)
+	if err := s.SaveStravaTokens(store.StravaTokens{
+		AccessToken: "acc", RefreshToken: "ref",
+		ExpiresAt: time.Now().Add(time.Hour).Unix(), Scope: "activity:read_all", AthleteID: 1,
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// No activities -> 0 synced, status ok.
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	client := strava.NewWithBase("123", "secret", "http://cb", srv.URL)
+
+	// Garmin worker fails.
+	script := filepath.Join(t.TempDir(), "fail.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho boom 1>&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	r := garmin.Runner{Python: "/bin/sh", Script: script}
+
+	out := SyncAll(context.Background(), s, client, r, nil)
+	if out.Strava.Status != "ok" {
+		t.Errorf("strava = %+v, want ok", out.Strava)
+	}
+	if out.Garmin.Status != "error" || out.Garmin.Error == nil {
+		t.Errorf("garmin = %+v, want error", out.Garmin)
+	}
+}

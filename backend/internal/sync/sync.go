@@ -224,3 +224,18 @@ func rawString(m json.RawMessage) string {
 	}
 	return string(m)
 }
+
+// AllResult is the combined sync outcome for both sources (the /api/sync body).
+type AllResult struct {
+	Strava SourceResult
+	Garmin SourceResult
+}
+
+// SyncAll runs both syncs sequentially (single SQLite writer) and returns both
+// results. A failure in one source never aborts the other.
+func SyncAll(ctx context.Context, s *store.Store, client *strava.Client, r garmin.Runner, extraEnv []string) AllResult {
+	return AllResult{
+		Strava: SyncStrava(ctx, s, client),
+		Garmin: SyncGarmin(ctx, s, r, extraEnv),
+	}
+}
