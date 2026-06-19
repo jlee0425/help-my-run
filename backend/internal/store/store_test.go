@@ -275,3 +275,104 @@ func TestUpsertSplits(t *testing.T) {
 
 func strp(v string) *string { return &v }
 func i64p(v int64) *int64    { return &v }
+
+func TestUpsertGarminAndListRecovery(t *testing.T) {
+	s := newTestStore(t)
+
+	// 06-18 has all four; 06-17 has sleep + rhr only (hrv & body_battery missing).
+	if err := s.UpsertSleep(SleepRow{
+		Date: "2026-06-18", DurationS: i64p(27000), DeepS: i64p(6300), LightS: i64p(14400),
+		RemS: i64p(5400), AwakeS: i64p(900), Score: i64p(82), RawJSON: `{"d":1}`,
+	}); err != nil {
+		t.Fatalf("UpsertSleep 18: %v", err)
+	}
+	if err := s.UpsertSleep(SleepRow{
+		Date: "2026-06-17", DurationS: i64p(25800), DeepS: i64p(5400), LightS: i64p(13800),
+		RemS: i64p(4800), AwakeS: i64p(1800), Score: i64p(71), RawJSON: `{"d":2}`,
+	}); err != nil {
+		t.Fatalf("UpsertSleep 17: %v", err)
+	}
+	if err := s.UpsertHrv(HrvRow{
+		Date: "2026-06-18", LastNightAvgMs: i64p(48), Status: strp("BALANCED"), RawJSON: `{"h":1}`,
+	}); err != nil {
+		t.Fatalf("UpsertHrv 18: %v", err)
+	}
+	if err := s.UpsertBodyBattery(BodyBatteryRow{
+		Date: "2026-06-18", Charged: i64p(62), Drained: i64p(78), High: i64p(91), Low: i64p(14),
+		RawJSON: `{"b":1}`,
+	}); err != nil {
+		t.Fatalf("UpsertBodyBattery 18: %v", err)
+	}
+	if err := s.UpsertRhr(RhrRow{Date: "2026-06-18", RestingHR: i64p(47), RawJSON: `{"r":1}`}); err != nil {
+		t.Fatalf("UpsertRhr 18: %v", err)
+	}
+	if err := s.UpsertRhr(RhrRow{Date: "2026-06-17", RestingHR: i64p(49), RawJSON: `{"r":2}`}); err != nil {
+		t.Fatalf("UpsertRhr 17: %v", err)
+	}
+
+	// Distinct recovery dates across all four tables = {06-17, 06-18} = 2.
+	n, err := s.CountRecoveryDays()
+	if err != nil {
+		t.Fatalf("CountRecoveryDays error = %v", err)
+	}
+	if n != 2 {
+		t.Errorf("CountRecoveryDays = %d, want 2", n)
+	}
+
+	rec, err := s.ListRecovery(30)
+	if err != nil {
+		t.Fatalf("ListRecovery error = %v", err)
+	}
+	if len(rec) != 2 {
+		t.Fatalf("ListRecovery len = %d, want 2", len(rec))
+	}
+	// Most-recent-first: 06-18 then 06-17.
+	if rec[0].Date != "2026-06-18" || rec[1].Date != "2026-06-17" {
+		t.Errorf("dates = [%s,%s], want [2026-06-18,2026-06-17]", rec[0].Date, rec[1].Date)
+	}
+	// 06-18 fully populated.
+	d18 := rec[0]
+	if d18.Sleep == nil || d18.Sleep.Score == nil || *d18.Sleep.Score != 82 {
+		t.Errorf("06-18 sleep.score = %v, want 82", d18.Sleep)
+	}
+	if d18.HRV == nil || d18.HRV.Status == nil || *d18.HRV.Status != "BALANCED" {
+		t.Errorf("06-18 hrv = %v, want BALANCED", d18.HRV)
+	}
+	if d18.BodyBattery == nil || d18.BodyBattery.High == nil || *d18.BodyBattery.High != 91 {
+		t.Errorf("06-18 body_battery.high = %v, want 91", d18.BodyBattery)
+	}
+	if d18.RHR == nil || d18.RHR.RestingHR == nil || *d18.RHR.RestingHR != 47 {
+		t.Errorf("06-18 rhr = %v, want 47", d18.RHR)
+	}
+	// 06-17 has sleep + rhr; hrv and body_battery must be nil.
+	d17 := rec[1]
+	if d17.HRV != nil {
+		t.Errorf("06-17 hrv = %v, want nil", d17.HRV)
+	}
+	if d17.BodyBattery != nil {
+		t.Errorf("06-17 body_battery = %v, want nil", d17.BodyBattery)
+	}
+	if d17.Sleep == nil || d17.RHR == nil {
+		t.Errorf("06-17 sleep/rhr missing: sleep=%v rhr=%v", d17.Sleep, d17.RHR)
+	}
+
+	// Re-upsert sleep 06-18 with a new score -> update, not duplicate.
+	if err := s.UpsertSleep(SleepRow{
+		Date: "2026-06-18", DurationS: i64p(27000), Score: i64p(90), RawJSON: `{"d":1}`,
+	}); err != nil {
+		t.Fatalf("re-UpsertSleep: %v", err)
+	}
+	rec, _ = s.ListRecovery(30)
+	if len(rec) != 2 {
+		t.Fatalf("after re-upsert len = %d, want 2", len(rec))
+	}
+	if rec[0].Sleep == nil || rec[0].Sleep.Score == nil || *rec[0].Sleep.Score != 90 {
+		t.Errorf("06-18 sleep.score after re-upsert = %v, want 90", rec[0].Sleep)
+	}
+
+	// days limit clamps result.
+	one, _ := s.ListRecovery(1)
+	if len(one) != 1 || one[0].Date != "2026-06-18" {
+		t.Errorf("ListRecovery(1) = %v, want single [2026-06-18]", one)
+	}
+}
