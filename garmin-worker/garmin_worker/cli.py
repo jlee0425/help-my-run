@@ -19,6 +19,14 @@ import sys
 from typing import Optional, Sequence
 
 from . import client, normalize
+from .fetcher import run_fetch
+
+try:  # re-exported from package root (Garmin research §5)
+    from garminconnect import GarminConnectAuthenticationError
+except Exception:  # pragma: no cover - import guard for environments w/o lib
+
+    class GarminConnectAuthenticationError(Exception):
+        """Fallback when garminconnect is unavailable (e.g. unit tests)."""
 
 PROG = "worker.py"
 
@@ -122,9 +130,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         sys.stdout.write("\n")
         return 0
 
-    # Live fetch wiring is added in Task 16.
-    print("live fetch is not wired yet", file=sys.stderr)
-    return 1
+    fetched_at = (
+        _dt.datetime.now(_dt.timezone.utc)
+        .replace(microsecond=0)
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
+    try:
+        live = client.GarminClient.resume()
+        output = run_fetch(live, since=since, until=until, fetched_at=fetched_at)
+    except GarminConnectAuthenticationError as exc:
+        print(
+            f"garmin authentication failed ({exc}); re-run worker.py login",
+            file=sys.stderr,
+        )
+        return 1
+    except Exception as exc:  # connection / rate-limit / unexpected
+        print(f"fetch failed: {exc}", file=sys.stderr)
+        return 1
+
+    json.dump(output, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
 
 
 if __name__ == "__main__":
