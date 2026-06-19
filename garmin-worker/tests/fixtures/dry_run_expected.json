@@ -1,0 +1,20 @@
+{
+  "since": "2026-06-14",
+  "until": "2026-06-15",
+  "fetched_at": "2026-06-15T05:00:12Z",
+  "sleep": [
+    {"date": "2026-06-14", "duration_s": 26400, "deep_s": 6000, "light_s": 14100, "rem_s": 5400, "awake_s": 900, "score": 79, "raw_json": {"dailySleepDTO": {"sleepTimeSeconds": 26400, "deepSleepSeconds": 6000, "lightSleepSeconds": 14100, "remSleepSeconds": 5400, "awakeSleepSeconds": 900, "sleepScores": {"overall": {"value": 79}}}}},
+    {"date": "2026-06-15", "duration_s": 27000, "deep_s": 6300, "light_s": 14400, "rem_s": 5400, "awake_s": 900, "score": 82, "raw_json": {"dailySleepDTO": {"sleepTimeSeconds": 27000, "deepSleepSeconds": 6300, "lightSleepSeconds": 14400, "remSleepSeconds": 5400, "awakeSleepSeconds": 900, "sleepScores": {"overall": {"value": 82}}}}}
+  ],
+  "hrv": [
+    {"date": "2026-06-15", "last_night_avg_ms": 48, "status": "BALANCED", "raw_json": {"hrvSummary": {"lastNightAvg": 48, "lastNight5MinHigh": 70, "weeklyAvg": 46, "status": "BALANCED"}, "hrvReadings": []}}
+  ],
+  "body_battery": [
+    {"date": "2026-06-14", "charged": 60, "drained": 75, "high": 88, "low": 16, "raw_json": {"date": "2026-06-14", "charged": 60, "drained": 75, "bodyBatteryValuesArray": [[1718323200000, "ACTIVE", 88], [1718366400000, "ACTIVE", 16]]}},
+    {"date": "2026-06-15", "charged": 62, "drained": 78, "high": 91, "low": 14, "raw_json": {"date": "2026-06-15", "charged": 62, "drained": 78, "bodyBatteryValuesArray": [[1718409600000, "ACTIVE", 91], [1718452800000, "ACTIVE", 14]]}}
+  ],
+  "rhr": [
+    {"date": "2026-06-14", "resting_hr": 48, "raw_json": {"restingHeartRate": 48, "totalSteps": 9000}},
+    {"date": "2026-06-15", "resting_hr": 47, "raw_json": {"restingHeartRate": 47, "totalSteps": 11000}}
+  ]
+}
