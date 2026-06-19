@@ -129,7 +129,7 @@ help-my-run/
 │           ├── raw_stats_2026-06-15.json
 │           └── dry_run_expected.json
 │
-├── app/                            # Expo app (SDK 55, expo-router)
+├── app/                            # Expo app (SDK 56, expo-router; create-expo-app@latest now ships SDK 56)
 │   ├── app.json                    # expo.scheme "helpmyrun", name, slug
 │   ├── package.json                # scripts.test=jest, jest.preset=jest-expo
 │   ├── tsconfig.json               # TypeScript config
@@ -929,13 +929,16 @@ Notes:
   ```bash
   cd /home/jake/project/help-my-run/app && npm install && npx --yes expo install @tanstack/react-query expo-secure-store expo-web-browser
   ```
-  Expected output: `npm install` finishes with an `added N packages` line; `expo install` prints `› Installing N SDK 55.0.0 compatible native modules` and the four packages resolved. (`expo install` pins SDK-compatible versions, unlike plain `npm install`.)
+  Expected output: `npm install` finishes with an `added N packages` line; `expo install` prints `› Installing N SDK 56.0.0 compatible native modules` and the four packages resolved. (`expo install` pins SDK-compatible versions, unlike plain `npm install`.) NOTE: `create-expo-app@latest` now ships **Expo SDK 56** (React 19.2.x, RNTL v14); references to "SDK 55" elsewhere in this plan predate that bump — the literal `@latest` command is authoritative and SDK 56 is correct.
 
 - [ ] **Step 5: Add the dev dependencies for testing (jest-expo + Testing Library).** Run:
   ```bash
-  cd /home/jake/project/help-my-run/app && npx --yes expo install --dev jest-expo jest @testing-library/react-native @testing-library/react-hooks react-test-renderer @types/jest
+  cd /home/jake/project/help-my-run/app && npx --yes expo install --dev jest-expo jest @testing-library/react-native react-test-renderer test-renderer @types/jest
   ```
-  Expected output: an `added N packages` line listing `jest-expo`, `@testing-library/react-native`, and the rest under devDependencies.
+  Expected output: an `added N packages` line listing `jest-expo`, `@testing-library/react-native`, and the rest under devDependencies. NOTES on dev deps under SDK 56 / React 19 (reconciled with reality):
+  - **`@testing-library/react-hooks` is intentionally omitted.** That standalone package was deprecated and its last release (`8.0.1`) peer-requires `react@^16.9.0 || ^17.0.0`, so it is uninstallable and unusable on React 19. Its `renderHook` has been merged into `@testing-library/react-native` v14 (`import { renderHook } from '@testing-library/react-native'`), which is the official replacement. Use that for hook tests.
+  - **`test-renderer` (`~1.2.0`) is required** because `@testing-library/react-native` v14 declares `test-renderer@^1.0.0` (the universal renderer) as a *peerDependency* — npm does not auto-install peers, so it must be added explicitly or RNTL's `render`/`screen` fail with "Cannot find module 'test-renderer'".
+  - **`react-test-renderer` (pin to the project's React version, e.g. `react-test-renderer@19.2.3`)** is `jest-expo`'s own dependency and is referenced by the jest-expo preset; pin it to match `react` exactly (the bare `react-test-renderer@*` that `expo install` would otherwise resolve picks a newer patch that conflicts with the SDK-pinned `react`).
 
 - [ ] **Step 6: Set the app scheme/name/slug and wire the `test` script.** Read `/home/jake/project/help-my-run/app/app.json` and ensure `expo.scheme` is `"helpmyrun"`, `expo.name` is `"help-my-run"`, `expo.slug` is `"help-my-run"` (edit the values create-expo-app generated). Then read `/home/jake/project/help-my-run/app/package.json` and add to the `"scripts"` object:
   ```json
