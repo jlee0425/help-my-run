@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"strconv"
 
 	"help-my-run/backend/internal/store"
 )
@@ -89,11 +90,73 @@ func (h *handlers) sync(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) activities(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, activitiesResp{Activities: []activityDTO{}})
+	limit := clampQuery(r, "limit", 30, 1, 200)
+	rows, err := h.d.Store.ListActivities(limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	out := make([]activityDTO, 0, len(rows))
+	for _, a := range rows {
+		out = append(out, activityDTO{
+			StravaID: a.StravaID, Name: a.Name, Type: a.Type, SportType: a.SportType,
+			StartTime: a.StartTime, StartTimeLocal: a.StartTimeLocal,
+			DistanceM: a.DistanceM, MovingTimeS: a.MovingTimeS, ElapsedTimeS: a.ElapsedTimeS,
+			AvgHR: a.AvgHR, MaxHR: a.MaxHR, AvgSpeed: a.AvgSpeed, MaxSpeed: a.MaxSpeed,
+			AvgCadence: a.AvgCadence, ElevationGainM: a.ElevationGainM,
+		})
+	}
+	writeJSON(w, http.StatusOK, activitiesResp{Activities: out})
 }
 
 func (h *handlers) recovery(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, recoveryResp{Recovery: []recoveryDayDTO{}})
+	days := clampQuery(r, "days", 30, 1, 365)
+	rows, err := h.d.Store.ListRecovery(days)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	out := make([]recoveryDayDTO, 0, len(rows))
+	for _, d := range rows {
+		rd := recoveryDayDTO{Date: d.Date}
+		if d.Sleep != nil {
+			rd.Sleep = &sleepDTO{
+				DurationS: d.Sleep.DurationS, DeepS: d.Sleep.DeepS, LightS: d.Sleep.LightS,
+				RemS: d.Sleep.RemS, AwakeS: d.Sleep.AwakeS, Score: d.Sleep.Score,
+			}
+		}
+		if d.HRV != nil {
+			rd.HRV = &hrvDTO{LastNightAvgMs: d.HRV.LastNightAvgMs, Status: d.HRV.Status}
+		}
+		if d.BodyBattery != nil {
+			rd.BodyBattery = &bodyBatteryDTO{
+				Charged: d.BodyBattery.Charged, Drained: d.BodyBattery.Drained,
+				High: d.BodyBattery.High, Low: d.BodyBattery.Low,
+			}
+		}
+		if d.RHR != nil {
+			rd.RHR = &rhrDTO{RestingHR: d.RHR.RestingHR}
+		}
+		out = append(out, rd)
+	}
+	writeJSON(w, http.StatusOK, recoveryResp{Recovery: out})
+}
+
+// clampQuery parses an int query param, applying a default and [min,max] clamp.
+func clampQuery(r *http.Request, key string, def, min, max int) int {
+	v := def
+	if raw := r.URL.Query().Get(key); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			v = n
+		}
+	}
+	if v < min {
+		v = min
+	}
+	if v > max {
+		v = max
+	}
+	return v
 }
 
 func writeHTML(w http.ResponseWriter, msg string) {
