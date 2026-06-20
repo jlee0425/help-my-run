@@ -1,0 +1,12 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "result": "Sorry, I cannot produce JSON right now.",
+  "stop_reason": "end_turn",
+  "session_id": "s3",
+  "num_turns": 1,
+  "duration_ms": 900,
+  "total_cost_usd": 0.0
+}
