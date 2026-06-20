@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"help-my-run/backend/internal/store"
 )
@@ -143,4 +144,196 @@ func TestBpmDelta(t *testing.T) {
 	if got := bpmDelta(54, 50.2); math.Abs(got-3.8) > 1e-9 {
 		t.Errorf("bpmDelta(54,50.2) = %v, want 3.8", got)
 	}
+}
+
+func mkDay(date string, durationS, sleepScore, hrvMs, rhr, bbHigh *int64) store.RecoveryDay {
+	rd := store.RecoveryDay{Date: date}
+	if durationS != nil || sleepScore != nil {
+		rd.Sleep = &store.SleepFields{DurationS: durationS, Score: sleepScore}
+	}
+	if hrvMs != nil {
+		rd.HRV = &store.HrvFields{LastNightAvgMs: hrvMs}
+	}
+	if bbHigh != nil {
+		rd.BodyBattery = &store.BodyBatteryFields{High: bbHigh}
+	}
+	if rhr != nil {
+		rd.RHR = &store.RhrFields{RestingHR: rhr}
+	}
+	return rd
+}
+
+func baselineRows(n int, hrvMs, rhr int64) []store.RecoveryDay {
+	out := make([]store.RecoveryDay, 0, n)
+	for i := 0; i < n; i++ {
+		date := "2026-06-" + twoDigit(19-i)
+		out = append(out, mkDay(date, i64p(27000), i64p(85), i64p(hrvMs), i64p(rhr), i64p(80)))
+	}
+	return out
+}
+
+func twoDigit(n int) string {
+	if n < 10 {
+		return "0" + string(rune('0'+n))
+	}
+	return string(rune('0'+n/10)) + string(rune('0'+n%10))
+}
+
+func TestAssess(t *testing.T) {
+	now := mustNow(t, "2026-06-20T05:30:00Z")
+
+	tests := []struct {
+		name      string
+		lastNight store.RecoveryDay
+		baseHRV   int64
+		baseRHR   int64
+		wantColor Color
+	}{
+		{
+			name:      "all nominal -> GREEN",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorGreen,
+		},
+		{
+			name:      "HRV -17% (red) -> RED",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(85), i64p(48), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorRed,
+		},
+		{
+			name:      "HRV -8% (one amber) -> AMBER",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(85), i64p(53), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorAmber,
+		},
+		{
+			name:      "two amber signals (HRV -8% + RHR +5) -> RED (confirmation)",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(85), i64p(53), i64p(55), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorRed,
+		},
+		{
+			name:      "short sleep 4.5h -> RED",
+			lastNight: mkDay("2026-06-20", i64p(16200), i64p(85), i64p(58), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorRed,
+		},
+		{
+			name:      "sleep 6.0h (amber) only -> AMBER",
+			lastNight: mkDay("2026-06-20", i64p(21600), i64p(85), i64p(58), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorAmber,
+		},
+		{
+			name:      "body battery 25 -> RED",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(25)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorRed,
+		},
+		{
+			name:      "body battery 45 (amber) only -> AMBER",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(45)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorAmber,
+		},
+		{
+			name:      "sleep score 60 (amber) only -> AMBER",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(60), i64p(58), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorAmber,
+		},
+		{
+			name:      "sleep score 45 -> RED",
+			lastNight: mkDay("2026-06-20", i64p(27000), i64p(45), i64p(58), i64p(50), i64p(80)),
+			baseHRV:   58, baseRHR: 50, wantColor: ColorRed,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rows := append([]store.RecoveryDay{tt.lastNight}, baselineRows(MinBaselineDays, tt.baseHRV, tt.baseRHR)...)
+			r := Assess(rows, now)
+			if r.Color != tt.wantColor {
+				t.Errorf("Assess color = %q, want %q (drivers=%+v reasons=%v)", r.Color, tt.wantColor, r.Drivers, r.Reasons)
+			}
+			if r.Drivers.Date != "2026-06-20" {
+				t.Errorf("Drivers.Date = %q, want 2026-06-20", r.Drivers.Date)
+			}
+			if r.Color != ColorGreen && len(r.Reasons) == 0 {
+				t.Errorf("non-green color %q must have reasons", r.Color)
+			}
+		})
+	}
+}
+
+func TestAssessEmpty(t *testing.T) {
+	now := mustNow(t, "2026-06-20T05:30:00Z")
+	r := Assess(nil, now)
+	if r.Color != ColorAmber {
+		t.Errorf("Assess(nil) color = %q, want amber (conservative)", r.Color)
+	}
+	if r.Drivers.DataComplete {
+		t.Errorf("Assess(nil) DataComplete = true, want false")
+	}
+}
+
+func TestAssessMissingBaselineForcesAmber(t *testing.T) {
+	now := mustNow(t, "2026-06-20T05:30:00Z")
+	rows := []store.RecoveryDay{
+		mkDay("2026-06-20", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-19", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+	}
+	r := Assess(rows, now)
+	if r.Drivers.DataComplete {
+		t.Errorf("DataComplete = true with <MinBaselineDays prior days, want false")
+	}
+	if r.Color != ColorAmber {
+		t.Errorf("color = %q, want amber when baseline missing", r.Color)
+	}
+	if r.Drivers.HRVDeltaPct != nil {
+		t.Errorf("HRVDeltaPct = %v, want nil when baseline unavailable", *r.Drivers.HRVDeltaPct)
+	}
+}
+
+func TestAssessDriverNumbers(t *testing.T) {
+	now := mustNow(t, "2026-06-20T05:30:00Z")
+	rows := []store.RecoveryDay{
+		mkDay("2026-06-20", i64p(21960), i64p(62), i64p(48), i64p(54), i64p(61)), // 6.1h
+		mkDay("2026-06-19", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-18", i64p(27000), i64p(85), i64p(59), i64p(50), i64p(80)),
+		mkDay("2026-06-17", i64p(27000), i64p(85), i64p(58), i64p(51), i64p(80)),
+	}
+	r := Assess(rows, now)
+	d := r.Drivers
+	if d.SleepHours == nil || math.Abs(*d.SleepHours-6.1) > 1e-9 {
+		t.Errorf("SleepHours = %v, want 6.1", d.SleepHours)
+	}
+	if d.SleepScore == nil || *d.SleepScore != 62 {
+		t.Errorf("SleepScore = %v, want 62", d.SleepScore)
+	}
+	if d.HRVLastNightMs == nil || *d.HRVLastNightMs != 48 {
+		t.Errorf("HRVLastNightMs = %v, want 48", d.HRVLastNightMs)
+	}
+	if d.HRVBaselineMs == nil || math.Abs(*d.HRVBaselineMs-58.333333333333336) > 1e-9 {
+		t.Errorf("HRVBaselineMs = %v, want ~58.333", d.HRVBaselineMs)
+	}
+	if d.HRVDeltaPct == nil || math.Abs(*d.HRVDeltaPct-(-17.714285714285715)) > 1e-9 {
+		t.Errorf("HRVDeltaPct = %v, want ~-17.714", d.HRVDeltaPct)
+	}
+	if d.RHRLastNight == nil || *d.RHRLastNight != 54 {
+		t.Errorf("RHRLastNight = %v, want 54", d.RHRLastNight)
+	}
+	if d.RHRBaseline == nil || math.Abs(*d.RHRBaseline-50.333333333333336) > 1e-9 {
+		t.Errorf("RHRBaseline = %v, want ~50.333", d.RHRBaseline)
+	}
+	if d.RHRDeltaBpm == nil || math.Abs(*d.RHRDeltaBpm-3.6666666666666643) > 1e-9 {
+		t.Errorf("RHRDeltaBpm = %v, want ~3.667", d.RHRDeltaBpm)
+	}
+	if d.BodyBatteryHigh == nil || *d.BodyBatteryHigh != 61 {
+		t.Errorf("BodyBatteryHigh = %v, want 61", d.BodyBatteryHigh)
+	}
+	if !d.DataComplete {
+		t.Errorf("DataComplete = false, want true (last night + 3 baseline days present)")
+	}
+}
+
+func mustNow(t *testing.T, s string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatalf("parse %q: %v", s, err)
+	}
+	return tm
 }
