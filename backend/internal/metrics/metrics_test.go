@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -125,4 +126,40 @@ func mustTime(t *testing.T, s string) time.Time {
 		t.Fatalf("parse %q: %v", s, err)
 	}
 	return tm
+}
+
+// nearlyEqual compares accumulated-division float64s with an epsilon to avoid
+// brittle exact-equality failures (e.g. 18200/1000 vs 18.2). Defined once here;
+// reused by the volume/average assertions below.
+func nearlyEqual(got, want float64) bool { return math.Abs(got-want) <= 1e-9 }
+
+func TestWeeklyVolumeKm(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z")
+	acts := []store.Activity{
+		{StravaID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
+		{StravaID: 2, Type: "Run", StartTime: "2026-06-17T06:00:00Z", DistanceM: 8200},
+		{StravaID: 3, Type: "Run", StartTime: "2026-06-10T06:00:00Z", DistanceM: 6000}, // >7d ago
+	}
+	if got := weeklyVolumeKm(acts, now); !nearlyEqual(got, 18.2) {
+		t.Errorf("weeklyVolumeKm = %v, want 18.2", got)
+	}
+	// No runs in window -> 0.
+	if got := weeklyVolumeKm(nil, now); !nearlyEqual(got, 0) {
+		t.Errorf("weeklyVolumeKm(nil) = %v, want 0", got)
+	}
+}
+
+func TestFourWeekAvgKm(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z")
+	acts := []store.Activity{
+		{StravaID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000}, // wk0
+		{StravaID: 2, Type: "Run", StartTime: "2026-06-14T06:00:00Z", DistanceM: 6000},  // wk1
+		{StravaID: 3, Type: "Run", StartTime: "2026-06-07T06:00:00Z", DistanceM: 8000},  // wk2
+		{StravaID: 4, Type: "Run", StartTime: "2026-05-30T06:00:00Z", DistanceM: 8000},  // wk3 (23 days ago - in)
+		{StravaID: 5, Type: "Run", StartTime: "2026-05-10T06:00:00Z", DistanceM: 50000}, // >28d ago, excluded
+	}
+	// 28-day total = 10+6+8+8 = 32 km; /4 = 8.0.
+	if got := fourWeekAvgKm(acts, now); !nearlyEqual(got, 8.0) {
+		t.Errorf("fourWeekAvgKm = %v, want 8.0", got)
+	}
 }

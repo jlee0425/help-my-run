@@ -74,3 +74,14 @@ func distanceKmInWindow(acts []store.Activity, from, to time.Time) float64 {
 	}
 	return km
 }
+
+// weeklyVolumeKm is run km over the last 7 days (now-7d, now].
+func weeklyVolumeKm(acts []store.Activity, now time.Time) float64 {
+	return distanceKmInWindow(acts, now.AddDate(0, 0, -7), now)
+}
+
+// fourWeekAvgKm is mean weekly run km over the last 28 days.
+func fourWeekAvgKm(acts []store.Activity, now time.Time) float64 {
+	total := distanceKmInWindow(acts, now.AddDate(0, 0, -28), now)
+	return total / 4.0
+}
