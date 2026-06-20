@@ -40,6 +40,12 @@ export default function HomeScreen() {
       <Link href="/settings" style={styles.link}>
         Settings
       </Link>
+      <Link href="/plan" style={styles.link}>
+        Plan my week
+      </Link>
+      <Link href="/profile" style={styles.link}>
+        Profile
+      </Link>
 
       <Text style={styles.heading}>Recent runs</Text>
       <FlatList
