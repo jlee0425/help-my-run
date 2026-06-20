@@ -5,8 +5,10 @@
 package readiness
 
 import (
+	"fmt"
 	"time"
 
+	"help-my-run/backend/internal/metrics"
 	"help-my-run/backend/internal/store"
 )
 
@@ -64,14 +66,210 @@ type Readiness struct {
 	Reasons []string         `json:"reasons"` // human-readable bullets, e.g. "HRV -18% vs baseline"
 }
 
+// signalLevel is the per-signal severity used internally during aggregation.
+type signalLevel int
+
+const (
+	levelGreen signalLevel = iota
+	levelAmber
+	levelRed
+)
+
+// worse returns the more severe of two levels.
+func worse(a, b signalLevel) signalLevel {
+	if b > a {
+		return b
+	}
+	return a
+}
+
+// pick collects one *int64 metric across the given days (used to build a baseline
+// window). days are the prior days (recovery[1:1+BaselineWindowDays]).
+func pick(days []store.RecoveryDay, get func(store.RecoveryDay) *int64) []*int64 {
+	out := make([]*int64, 0, len(days))
+	for _, d := range days {
+		out = append(out, get(d))
+	}
+	return out
+}
+
 // Assess computes readiness from recovery rows (most-recent-first, as ListRecovery
 // returns) for the given local date. `now` is unused for arithmetic but kept for
 // signature symmetry with metrics and future trend windows.
-//
-// Implemented in a later step; this stub keeps the package compiling for the
-// types/constants tests.
 func Assess(recovery []store.RecoveryDay, now time.Time) Readiness {
-	return Readiness{}
+	_ = now // reserved for future trend windows; arithmetic is row-driven.
+
+	drivers := ReadinessDrivers{
+		RecoveryTrend: metricsTrend(recovery),
+		DataComplete:  true,
+	}
+	var reasons []string
+
+	if len(recovery) == 0 {
+		drivers.DataComplete = false
+		return Readiness{
+			Color:   ColorAmber,
+			Drivers: drivers,
+			Reasons: []string{"No recovery data for last night"},
+		}
+	}
+
+	last := recovery[0]
+	drivers.Date = last.Date
+
+	var window []store.RecoveryDay
+	if len(recovery) > 1 {
+		end := 1 + BaselineWindowDays
+		if end > len(recovery) {
+			end = len(recovery)
+		}
+		window = recovery[1:end]
+	}
+
+	level := levelGreen
+	amberCount := 0
+	redCount := 0
+	note := func(sig signalLevel, reason string) {
+		switch sig {
+		case levelAmber:
+			amberCount++
+			reasons = append(reasons, reason)
+		case levelRed:
+			redCount++
+			reasons = append(reasons, reason)
+		}
+		level = worse(level, sig)
+	}
+
+	// --- Sleep hours ---
+	if sh := sleepHours(last.Sleep); sh != nil {
+		drivers.SleepHours = sh
+		switch {
+		case *sh < RedSleepHours:
+			note(levelRed, fmt.Sprintf("Sleep %.1fh (<%.1fh)", *sh, RedSleepHours))
+		case *sh < AmberSleepHours:
+			note(levelAmber, fmt.Sprintf("Sleep %.1fh (<%.1fh)", *sh, AmberSleepHours))
+		}
+	} else {
+		drivers.DataComplete = false
+	}
+
+	// --- Sleep score ---
+	if last.Sleep != nil && last.Sleep.Score != nil {
+		ss := *last.Sleep.Score
+		drivers.SleepScore = ptrI(ss)
+		switch {
+		case ss < RedSleepScore:
+			note(levelRed, fmt.Sprintf("Sleep score %d (<%d)", ss, RedSleepScore))
+		case ss < AmberSleepScore:
+			note(levelAmber, fmt.Sprintf("Sleep score %d (<%d)", ss, AmberSleepScore))
+		}
+	}
+
+	// --- HRV vs baseline ---
+	if last.HRV != nil && last.HRV.LastNightAvgMs != nil {
+		hv := *last.HRV.LastNightAvgMs
+		drivers.HRVLastNightMs = ptrI(hv)
+		if base, ok := baseline(pick(window, func(d store.RecoveryDay) *int64 {
+			if d.HRV == nil {
+				return nil
+			}
+			return d.HRV.LastNightAvgMs
+		})); ok {
+			drivers.HRVBaselineMs = ptrF(base)
+			delta := pctDelta(hv, base)
+			drivers.HRVDeltaPct = ptrF(delta)
+			switch {
+			case delta <= RedHRVDropPct:
+				note(levelRed, fmt.Sprintf("HRV %.1f%% vs baseline", delta))
+			case delta <= AmberHRVDropPct:
+				note(levelAmber, fmt.Sprintf("HRV %.1f%% vs baseline", delta))
+			}
+		} else {
+			drivers.DataComplete = false
+		}
+	} else {
+		drivers.DataComplete = false
+	}
+
+	// --- RHR vs baseline ---
+	if last.RHR != nil && last.RHR.RestingHR != nil {
+		rv := *last.RHR.RestingHR
+		drivers.RHRLastNight = ptrI(rv)
+		if base, ok := baseline(pick(window, func(d store.RecoveryDay) *int64 {
+			if d.RHR == nil {
+				return nil
+			}
+			return d.RHR.RestingHR
+		})); ok {
+			drivers.RHRBaseline = ptrF(base)
+			delta := bpmDelta(rv, base)
+			drivers.RHRDeltaBpm = ptrF(delta)
+			switch {
+			case delta >= RedRHRRiseBpm:
+				note(levelRed, fmt.Sprintf("RHR +%.1f bpm vs baseline", delta))
+			case delta >= AmberRHRRiseBpm:
+				note(levelAmber, fmt.Sprintf("RHR +%.1f bpm vs baseline", delta))
+			}
+		} else {
+			drivers.DataComplete = false
+		}
+	} else {
+		drivers.DataComplete = false
+	}
+
+	// --- Body Battery overnight high ---
+	if last.BodyBattery != nil && last.BodyBattery.High != nil {
+		bb := *last.BodyBattery.High
+		drivers.BodyBatteryHigh = ptrI(bb)
+		switch {
+		case bb < RedBodyBattery:
+			note(levelRed, fmt.Sprintf("Body Battery high %d (<%d)", bb, RedBodyBattery))
+		case bb < AmberBodyBattery:
+			note(levelAmber, fmt.Sprintf("Body Battery high %d (<%d)", bb, AmberBodyBattery))
+		}
+	} else {
+		drivers.DataComplete = false
+	}
+
+	// --- Recovery-trend modifier: only when NO direct signal already fired. ---
+	// A declining trend adds one amber-weight ONLY when no per-signal amber/red has
+	// already been recorded; otherwise a single direct amber would double-count
+	// (direct amber + trend amber => 2 ambers => spurious RED). When a direct
+	// signal already fired, the trend is informational (a reason) but not additive.
+	if amberCount == 0 && redCount == 0 {
+		switch drivers.RecoveryTrend {
+		case "declining":
+			amberCount++
+			level = worse(level, levelAmber)
+			reasons = append(reasons, "Recovery trend declining")
+		case "improving":
+			// no direct concerns + improving trend: nothing to cancel.
+		}
+	}
+
+	// --- Aggregate (worst-wins with confirmation). ---
+	var color Color
+	switch {
+	case redCount >= 1 || amberCount >= 2:
+		color = ColorRed
+	case amberCount == 1 || !drivers.DataComplete:
+		color = ColorAmber
+	default:
+		color = ColorGreen
+	}
+
+	if !drivers.DataComplete && color == ColorAmber {
+		reasons = append(reasons, "Incomplete last-night data — conservative")
+	}
+
+	return Readiness{Color: color, Drivers: drivers, Reasons: reasons}
+}
+
+// metricsTrend delegates to the exported metrics.RecoveryTrend so readiness reuses
+// the identical M1 trend computation rather than re-implementing it.
+func metricsTrend(recovery []store.RecoveryDay) string {
+	return metrics.RecoveryTrend(recovery)
 }
 
 // ptrF / ptrI are convenience constructors for the *float64 / *int64 driver fields.
