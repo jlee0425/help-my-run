@@ -31,6 +31,16 @@ type Config struct {
 	ImageDir    string `envconfig:"IMAGE_DIR" default:"./data/crossfit"`
 
 	AnthropicAPIKey string `envconfig:"ANTHROPIC_API_KEY"` // stub (subscription path; unused)
+
+	// M2: agentic daily coach. The live schedule (time/tz/enable) is re-read from
+	// athlete_profile on every scheduler.Run iteration (see scheduler.ConfigProvider,
+	// Task 25), so PUT /api/profile edits apply without a restart; these are only
+	// first-boot defaults + the push test seam, NOT the runtime source.
+	AgentEnabledDefault bool   `envconfig:"AGENT_ENABLED" default:"true"`
+	AgentRunTime        string `envconfig:"AGENT_RUN_TIME" default:"05:30"`
+	AgentTimezone       string `envconfig:"AGENT_TZ" default:"UTC"`
+	AgentTickInterval   string `envconfig:"AGENT_TICK_INTERVAL" default:"1m"`
+	ExpoPushBaseURL     string `envconfig:"EXPO_PUSH_BASE_URL" default:"https://exp.host"`
 }
 
 // Load reads .env (if present) into the process environment, then maps env
