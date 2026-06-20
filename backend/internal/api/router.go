@@ -60,6 +60,14 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/sync", h.sync)
 		r.Get("/api/activities", h.activities)
 		r.Get("/api/recovery", h.recovery)
+
+		// M1
+		r.Get("/api/profile", h.profile)
+		r.Put("/api/profile", h.updateProfile)
+		r.Post("/api/crossfit/parse", h.crossfitParse)
+		r.Post("/api/plan/generate", h.planGenerate)
+		r.Get("/api/plan", h.plan)
+		r.Get("/api/fitness", h.fitness)
 	})
 
 	return r
