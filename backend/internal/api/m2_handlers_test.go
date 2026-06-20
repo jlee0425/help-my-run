@@ -68,3 +68,48 @@ func TestProfilePutRejectsBadTimezone(t *testing.T) {
 		t.Fatalf("status = %d, want 400 for bad tz (body=%s)", rec.Code, rec.Body.String())
 	}
 }
+
+func TestPushRegisterStoresToken(t *testing.T) {
+	h, s := newTestServer(t)
+	body := `{"expo_push_token":"ExponentPushToken[abc]","platform":"ios"}`
+	rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	var out pushRegisterResponseDTO
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.ExpoPushToken != "ExponentPushToken[abc]" || out.Platform != "ios" || out.UpdatedAt == "" {
+		t.Errorf("resp = %+v", out)
+	}
+	toks, _ := s.ListDeviceTokens()
+	if len(toks) != 1 || toks[0].ExpoPushToken != "ExponentPushToken[abc]" {
+		t.Errorf("stored tokens = %+v, want one", toks)
+	}
+}
+
+func TestPushRegisterRejectsEmptyToken(t *testing.T) {
+	h, _ := newTestServer(t)
+	body := `{"expo_push_token":"","platform":"ios"}`
+	rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPushRegisterRejectsBadPlatform(t *testing.T) {
+	h, _ := newTestServer(t)
+	body := `{"expo_push_token":"ExponentPushToken[x]","platform":"windows"}`
+	rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPushRegisterRequiresAuth(t *testing.T) {
+	h, _ := newTestServer(t)
+	body := `{"expo_push_token":"ExponentPushToken[x]","platform":"ios"}`
+	rec := doBody(t, h, http.MethodPost, "/api/push/register", "", body)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
