@@ -92,4 +92,10 @@ describe('HomeScreen', () => {
     expect(getByText('2026-06-18')).toBeTruthy();
     expect(getByText('2026-06-17')).toBeTruthy();
   });
+
+  it('renders navigation links to Plan and Profile', async () => {
+    const { getByText } = await render(<HomeScreen />);
+    expect(getByText('Plan my week')).toBeTruthy();
+    expect(getByText('Profile')).toBeTruthy();
+  });
 });
