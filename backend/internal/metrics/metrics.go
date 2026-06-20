@@ -6,6 +6,7 @@ package metrics
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"help-my-run/backend/internal/store"
@@ -99,4 +100,59 @@ func acuteChronicRatio(acts []store.Activity, now time.Time) float64 {
 		return 0
 	}
 	return round2(acute / chronic)
+}
+
+// median returns the median of a sorted, non-empty slice.
+func median(sorted []float64) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2.0
+}
+
+// runPacesSecPerKm returns sorted (ascending) sec/km for qualifying runs in the
+// last 28 days: runs with positive distance and moving time.
+func runPacesSecPerKm(acts []store.Activity, now time.Time) []float64 {
+	from := now.AddDate(0, 0, -28)
+	var paces []float64
+	for _, a := range acts {
+		if !isRun(a.Type) || a.DistanceM <= 0 || a.MovingTimeS <= 0 {
+			continue
+		}
+		t, ok := parseStart(a.StartTime)
+		if !ok || !t.After(from) || t.After(now) {
+			continue
+		}
+		secPerKm := float64(a.MovingTimeS) / (a.DistanceM / 1000.0)
+		paces = append(paces, secPerKm)
+	}
+	sort.Float64s(paces)
+	return paces
+}
+
+// paceEstimates returns (easyPace, thresholdPace) formatted as "M:SS/km" from
+// activity summaries over the last 28 days. Easy = median of all qualifying
+// runs; threshold = median of the fastest 25% (never slower than easy). Returns
+// ("","") when there are no qualifying runs.
+func paceEstimates(acts []store.Activity, now time.Time) (string, string) {
+	paces := runPacesSecPerKm(acts, now)
+	if len(paces) == 0 {
+		return "", ""
+	}
+	easySec := median(paces)
+
+	// Fastest 25% (at least 1). paces is ascending, so fastest are at the front.
+	k := int(math.Ceil(float64(len(paces)) * 0.25))
+	if k < 1 {
+		k = 1
+	}
+	thrSec := median(paces[:k])
+	if thrSec > easySec {
+		thrSec = easySec
+	}
+	return formatPace(easySec), formatPace(thrSec)
 }
