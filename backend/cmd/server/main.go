@@ -2,18 +2,26 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
+	_ "time/tzdata" // embed the IANA tz DB for headless time.LoadLocation
+
+	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/api"
 	"help-my-run/backend/internal/coach"
 	"help-my-run/backend/internal/config"
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/llm"
+	"help-my-run/backend/internal/push"
+	"help-my-run/backend/internal/scheduler"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
 	syncpkg "help-my-run/backend/internal/sync"
@@ -29,6 +37,9 @@ type App struct {
 	Strava  *strava.Client
 	Runner  garmin.Runner
 	Cfg     *config.Config
+	Coach   *coach.Coach // M2: shared coach engine (also drives the agent)
+	Agent   *agent.Agent // M2: daily readiness/adjust loop
+	Pusher  *push.Client // M2: Expo push transport
 }
 
 // Wire builds the full application graph from config: opens + migrates the
@@ -61,6 +72,16 @@ func Wire(cfg *config.Config) (*App, error) {
 	}
 	coachEngine := coach.New(s, llmClient, cfg.ClaudeModel, cfg.ImageDir)
 
+	pushClient := push.NewClient(cfg.ExpoPushBaseURL)
+	dailyAgent := agent.New(
+		s,
+		agent.NewRealSyncer(s, stravaClient, runner, extraEnv),
+		coachEngine,
+		pushClient,
+		agentClock{},
+		nil, // loc resolved in main() from profile; agent default UTC is fine for Wire
+	)
+
 	handler := api.NewRouter(api.Deps{
 		Store:    s,
 		Strava:   stravaClient,
@@ -68,9 +89,20 @@ func Wire(cfg *config.Config) (*App, error) {
 		SyncFunc: syncFunc,
 		Coach:    coachEngine,
 		ImageDir: cfg.ImageDir,
+		Agent:    apiAgent{a: dailyAgent, store: s},
+		Pusher:   pushClient,
 	})
 
-	return &App{Store: s, Handler: handler, Strava: stravaClient, Runner: runner, Cfg: cfg}, nil
+	return &App{
+		Store:   s,
+		Handler: handler,
+		Strava:  stravaClient,
+		Runner:  runner,
+		Cfg:     cfg,
+		Coach:   coachEngine,
+		Agent:   dailyAgent,
+		Pusher:  pushClient,
+	}, nil
 }
 
 // garminEnv builds the env passed through to the worker subprocess.
@@ -80,6 +112,47 @@ func garminEnv(cfg *config.Config) []string {
 		"GARMIN_PASSWORD=" + cfg.GarminPassword,
 		"GARMIN_TOKENSTORE=" + cfg.GarminTokenstore,
 	}
+}
+
+// agentClock backs the agent with the real clock.
+type agentClock struct{}
+
+func (agentClock) Now() time.Time { return time.Now() }
+
+// loadAgentLocation loads the IANA timezone for the daily schedule. Empty -> UTC.
+func loadAgentLocation(tz string) (*time.Location, error) {
+	if tz == "" {
+		return time.UTC, nil
+	}
+	return time.LoadLocation(tz)
+}
+
+// parseRunTime splits "HH:MM" 24h into hour, minute; defaults to 05:30 on a
+// malformed value.
+func parseRunTime(s string) (int, int) {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) == 2 {
+		h, herr := strconv.Atoi(parts[0])
+		m, merr := strconv.Atoi(parts[1])
+		if herr == nil && merr == nil && h >= 0 && h < 24 && m >= 0 && m < 60 {
+			return h, m
+		}
+	}
+	return 5, 30
+}
+
+// apiAgent adapts *agent.Agent to the api.Agent seam, adding force semantics:
+// force deletes the persistent once-per-day guard before running.
+type apiAgent struct {
+	a     *agent.Agent
+	store *store.Store
+}
+
+func (p apiAgent) RunDaily(ctx context.Context, localDate string, force bool) agent.RunResult {
+	if force {
+		_ = p.store.DeleteAgentRun(localDate) // reset the persistent once-per-day guard
+	}
+	return p.a.RunDaily(ctx, localDate)
 }
 
 // runSyncOnBoot invokes the sync fn once immediately so a fresh instance pulls
@@ -116,6 +189,36 @@ func main() {
 	// M0 follow-up #2: run once on boot, then on the interval.
 	runSyncOnBoot(ctx, syncOnce)
 	go syncpkg.RunTicker(ctx, syncInterval, syncOnce)
+
+	// scheduleProvider re-reads the live schedule from athlete_profile on every
+	// scheduler loop iteration; env values are first-boot fallbacks only.
+	scheduleProvider := func() (scheduler.Config, bool, error) {
+		runTime := cfg.AgentRunTime
+		runTz := cfg.AgentTimezone
+		enabled := cfg.AgentEnabledDefault
+		if prof, perr := app.Store.GetAthleteProfile(); perr == nil {
+			if prof.DailyRunTime != "" {
+				runTime = prof.DailyRunTime
+			}
+			if prof.Timezone != "" {
+				runTz = prof.Timezone
+			}
+			enabled = prof.AgentEnabled
+		}
+		loc, lerr := loadAgentLocation(runTz)
+		if lerr != nil {
+			return scheduler.Config{}, false, fmt.Errorf("scheduler tz %q: %w", runTz, lerr)
+		}
+		hh, mm := parseRunTime(runTime)
+		return scheduler.Config{Hour: hh, Minute: mm, Loc: loc}, enabled, nil
+	}
+	go scheduler.Run(ctx, scheduler.RealClock{}, scheduleProvider,
+		func(c context.Context, localDate string) {
+			res := app.Agent.RunDaily(c, localDate)
+			log.Printf("agent: date=%s skipped=%v color=%s action=%s source=%s pushed=%v",
+				res.Date, res.Skipped, res.ReadinessColor, res.Action, res.Source, res.Pushed)
+		})
+	log.Printf("agent scheduler: started (schedule re-read from profile each cycle)")
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

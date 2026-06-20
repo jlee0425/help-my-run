@@ -84,6 +84,67 @@ func TestWireInjectsCoach(t *testing.T) {
 	}
 }
 
+func testCfg(t *testing.T) *config.Config {
+	t.Helper()
+	return &config.Config{
+		StravaClientID:      "id",
+		StravaClientSecret:  "secret",
+		StravaRedirectURL:   "http://localhost:8080/api/strava/callback",
+		APIToken:            "tok",
+		DBPath:              filepath.Join(t.TempDir(), "wire.db"),
+		Port:                "8080",
+		ClaudeBin:           "claude",
+		ClaudeModel:         "claude-opus-4-8",
+		ImageDir:            t.TempDir(),
+		AgentEnabledDefault: true,
+		AgentRunTime:        "05:30",
+		AgentTimezone:       "Asia/Seoul",
+		AgentTickInterval:   "1m",
+		ExpoPushBaseURL:     "https://exp.host",
+	}
+}
+
+func TestWireBuildsM2Graph(t *testing.T) {
+	app, err := Wire(testCfg(t))
+	if err != nil {
+		t.Fatalf("Wire error = %v", err)
+	}
+	defer func() { _ = app.Store.Close() }()
+
+	if app.Agent == nil {
+		t.Error("app.Agent = nil, want a wired *agent.Agent")
+	}
+	if app.Pusher == nil {
+		t.Error("app.Pusher = nil, want a wired *push.Client")
+	}
+	if app.Handler == nil {
+		t.Error("app.Handler = nil")
+	}
+}
+
+func TestWireTzdataLoadsSeoul(t *testing.T) {
+	_, err := loadAgentLocation("Asia/Seoul")
+	if err != nil {
+		t.Fatalf("loadAgentLocation(Asia/Seoul) error = %v", err)
+	}
+}
+
+func TestWiredHandlerServesToday404(t *testing.T) {
+	app, err := Wire(testCfg(t))
+	if err != nil {
+		t.Fatalf("Wire error = %v", err)
+	}
+	defer func() { _ = app.Store.Close() }()
+
+	req := httptest.NewRequest("GET", "/api/today?date=2026-06-20", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, req)
+	if rec.Code != 404 {
+		t.Fatalf("today status = %d, want 404 (no decision seeded)", rec.Code)
+	}
+}
+
 func TestRunSyncOnBoot(t *testing.T) {
 	called := make(chan struct{}, 1)
 	fn := func(ctx context.Context) {
