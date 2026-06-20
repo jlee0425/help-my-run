@@ -304,3 +304,30 @@ func safeWeeklyTarget(baseline float64, profile store.AthleteProfile, cutback bo
 	}
 	return round1(target)
 }
+
+// ComputeFitness assembles the full FitnessMetrics read from M0 store rows.
+// Pure and deterministic: callers supply activities, recovery days
+// (most-recent-first), the athlete profile, and an explicit `now`. This is the
+// entry point used by coach.Fitness and GET /api/fitness.
+func ComputeFitness(acts []store.Activity, recovery []store.RecoveryDay, profile store.AthleteProfile, now time.Time) FitnessMetrics {
+	weekly := weeklyVolumeKm(acts, now)
+	fourWeek := round2(fourWeekAvgKm(acts, now))
+	easy, threshold := paceEstimates(acts, now)
+	cutback := isCutbackWeek(now)
+
+	baseline := weekly
+	if fourWeek > baseline {
+		baseline = fourWeek
+	}
+
+	return FitnessMetrics{
+		WeeklyVolumeKm:     round2(weekly),
+		FourWeekAvgKm:      fourWeek,
+		AcuteChronicRatio:  acuteChronicRatio(acts, now),
+		EasyPace:           easy,
+		ThresholdPace:      threshold,
+		RecoveryTrend:      recoveryTrend(recovery),
+		SafeWeeklyTargetKm: safeWeeklyTarget(baseline, profile, cutback),
+		IsCutbackWeek:      cutback,
+	}
+}
