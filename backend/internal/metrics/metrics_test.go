@@ -323,3 +323,59 @@ func TestRecoveryTrend(t *testing.T) {
 		}
 	})
 }
+
+func TestIsCutbackWeek(t *testing.T) {
+	tests := []struct {
+		name string
+		now  string
+		want bool
+	}{
+		{"epoch week (idx 0)", "2026-01-05T12:00:00Z", false},
+		{"idx 1", "2026-01-12T12:00:00Z", false},
+		{"idx 2", "2026-01-19T12:00:00Z", false},
+		{"idx 3 -> cutback", "2026-01-26T12:00:00Z", true},
+		{"idx 4", "2026-02-02T12:00:00Z", false},
+		{"idx 7 -> cutback", "2026-02-23T12:00:00Z", true},
+		{"mid-week still counts by week", "2026-01-28T23:00:00Z", true}, // within idx-3 week
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now := mustTime(t, tt.now)
+			if got := isCutbackWeek(now); got != tt.want {
+				t.Errorf("isCutbackWeek(%s) = %v, want %v", tt.now, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSafeWeeklyTarget(t *testing.T) {
+	prof := func(target float64, mode string) store.AthleteProfile {
+		return store.AthleteProfile{TargetWeeklyKm: target, ProgressionMode: mode}
+	}
+
+	tests := []struct {
+		name     string
+		baseline float64
+		profile  store.AthleteProfile
+		cutback  bool
+		want     float64
+	}{
+		{"build ramps 10%", 20, prof(40, "build"), false, 22.0},
+		{"hold stays flat", 20, prof(40, "hold"), false, 20.0},
+		{"cutback = 80% of baseline", 20, prof(40, "build"), true, 16.0},
+		{"build capped at 1.5x stated target", 20, prof(20, "build"), false, 22.0}, // 22 < 30 cap, ok
+		{"build cap binds", 25, prof(20, "build"), false, 27.5},                    // 27.5 < 30 cap
+		{"build hard cap", 28, prof(20, "build"), false, 30.0},                     // 30.8 -> capped to 30
+		{"no history falls back to profile target", 0, prof(20, "build"), false, 22.0},
+		{"rounds to 1 decimal", 18.16, prof(40, "build"), false, 20.0}, // 18.16*1.1=19.976 -> 20.0
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := safeWeeklyTarget(tt.baseline, tt.profile, tt.cutback)
+			if got != tt.want {
+				t.Errorf("safeWeeklyTarget(%v, %+v, cutback=%v) = %v, want %v",
+					tt.baseline, tt.profile, tt.cutback, got, tt.want)
+			}
+		})
+	}
+}
