@@ -73,3 +73,56 @@ type Readiness struct {
 func Assess(recovery []store.RecoveryDay, now time.Time) Readiness {
 	return Readiness{}
 }
+
+// ptrF / ptrI are convenience constructors for the *float64 / *int64 driver fields.
+func ptrF(v float64) *float64 { return &v }
+func ptrI(v int64) *int64     { return &v }
+
+// sleepHours converts a sleep record's duration (seconds) to hours; nil if absent.
+func sleepHours(s *store.SleepFields) *float64 {
+	if s == nil || s.DurationS == nil {
+		return nil
+	}
+	h := float64(*s.DurationS) / 3600.0
+	return &h
+}
+
+// meanI64 averages the non-nil values; ok=false if none present. count is the
+// number of non-nil values averaged.
+func meanI64(vals []*int64) (mean float64, count int) {
+	var sum float64
+	for _, v := range vals {
+		if v != nil {
+			sum += float64(*v)
+			count++
+		}
+	}
+	if count == 0 {
+		return 0, 0
+	}
+	return sum / float64(count), count
+}
+
+// baseline returns the mean of the available values over the baseline window,
+// ok=false when fewer than MinBaselineDays non-nil values are present (baseline
+// unavailable -> that signal contributes no delta and forces DataComplete=false).
+func baseline(vals []*int64) (mean float64, ok bool) {
+	m, count := meanI64(vals)
+	if count < MinBaselineDays {
+		return 0, false
+	}
+	return m, true
+}
+
+// pctDelta is (last-baseline)/baseline*100; 0 when baseline is 0.
+func pctDelta(last int64, base float64) float64 {
+	if base == 0 {
+		return 0
+	}
+	return (float64(last) - base) / base * 100.0
+}
+
+// bpmDelta is last-baseline (positive = elevated RHR).
+func bpmDelta(last int64, base float64) float64 {
+	return float64(last) - base
+}
