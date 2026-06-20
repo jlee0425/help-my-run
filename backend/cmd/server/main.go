@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"help-my-run/backend/internal/api"
+	"help-my-run/backend/internal/coach"
 	"help-my-run/backend/internal/config"
 	"help-my-run/backend/internal/garmin"
+	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
 	syncpkg "help-my-run/backend/internal/sync"
@@ -52,11 +54,20 @@ func Wire(cfg *config.Config) (*App, error) {
 			res.Garmin.Status, res.Garmin.Synced, res.Garmin.Error
 	}
 
+	llmClient := &llm.Client{
+		Runner:  llm.ExecRunner{Bin: cfg.ClaudeBin},
+		Model:   cfg.ClaudeModel,
+		Timeout: 120 * time.Second,
+	}
+	coachEngine := coach.New(s, llmClient, cfg.ClaudeModel, cfg.ImageDir)
+
 	handler := api.NewRouter(api.Deps{
 		Store:    s,
 		Strava:   stravaClient,
 		APIToken: cfg.APIToken,
 		SyncFunc: syncFunc,
+		Coach:    coachEngine,
+		ImageDir: cfg.ImageDir,
 	})
 
 	return &App{Store: s, Handler: handler, Strava: stravaClient, Runner: runner, Cfg: cfg}, nil
@@ -69,6 +80,13 @@ func garminEnv(cfg *config.Config) []string {
 		"GARMIN_PASSWORD=" + cfg.GarminPassword,
 		"GARMIN_TOKENSTORE=" + cfg.GarminTokenstore,
 	}
+}
+
+// runSyncOnBoot invokes the sync fn once immediately so a fresh instance pulls
+// data without waiting a full ticker interval (M0 follow-up #2). It runs in a
+// goroutine so server startup is not blocked.
+func runSyncOnBoot(ctx context.Context, fn func(context.Context)) {
+	go fn(ctx)
 }
 
 func main() {
@@ -90,11 +108,14 @@ func main() {
 	stravaClient := app.Strava
 	runner := app.Runner
 	extraEnv := garminEnv(cfg)
-	go syncpkg.RunTicker(ctx, syncInterval, func(c context.Context) {
+	syncOnce := func(c context.Context) {
 		res := syncpkg.SyncAll(c, app.Store, stravaClient, runner, extraEnv)
-		log.Printf("periodic sync: strava=%s/%d garmin=%s/%d",
+		log.Printf("sync: strava=%s/%d garmin=%s/%d",
 			res.Strava.Status, res.Strava.Synced, res.Garmin.Status, res.Garmin.Synced)
-	})
+	}
+	// M0 follow-up #2: run once on boot, then on the interval.
+	runSyncOnBoot(ctx, syncOnce)
+	go syncpkg.RunTicker(ctx, syncInterval, syncOnce)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
