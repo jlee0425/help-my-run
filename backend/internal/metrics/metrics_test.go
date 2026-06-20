@@ -3,6 +3,9 @@ package metrics
 import (
 	"encoding/json"
 	"testing"
+	"time"
+
+	"help-my-run/backend/internal/store"
 )
 
 func TestFitnessMetricsJSONTags(t *testing.T) {
@@ -69,4 +72,57 @@ func TestFormatPace(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsRun(t *testing.T) {
+	tests := []struct {
+		typ  string
+		want bool
+	}{
+		{"Run", true},
+		{"TrailRun", true},
+		{"VirtualRun", true},
+		{"Ride", false},
+		{"Workout", false},
+		{"WeightTraining", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isRun(tt.typ); got != tt.want {
+			t.Errorf("isRun(%q) = %v, want %v", tt.typ, got, tt.want)
+		}
+	}
+}
+
+func TestDistanceKmInWindow(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z") // Monday
+	acts := []store.Activity{
+		// 2 days ago, run, 10 km -> in 7-day window.
+		{StravaID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
+		// 6 days ago, trail run, 5 km -> in 7-day window.
+		{StravaID: 2, Type: "TrailRun", StartTime: "2026-06-16T18:00:00Z", DistanceM: 5000},
+		// 10 days ago, run, 8 km -> outside 7-day, inside 28-day.
+		{StravaID: 3, Type: "Run", StartTime: "2026-06-12T06:00:00Z", DistanceM: 8000},
+		// 2 days ago but a Ride -> excluded (not a run).
+		{StravaID: 4, Type: "Ride", StartTime: "2026-06-20T07:00:00Z", DistanceM: 40000},
+		// unparseable start -> skipped.
+		{StravaID: 5, Type: "Run", StartTime: "not-a-time", DistanceM: 99000},
+	}
+	// 7-day window: [now-7d, now] -> acts 1 (10) + 2 (5) = 15 km.
+	if got := distanceKmInWindow(acts, now.AddDate(0, 0, -7), now); got != 15 {
+		t.Errorf("7-day distance = %v, want 15", got)
+	}
+	// 28-day window: acts 1+2+3 = 23 km.
+	if got := distanceKmInWindow(acts, now.AddDate(0, 0, -28), now); got != 23 {
+		t.Errorf("28-day distance = %v, want 23", got)
+	}
+}
+
+func mustTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	tm, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatalf("parse %q: %v", s, err)
+	}
+	return tm
 }
