@@ -274,7 +274,7 @@ func TestUpsertSplits(t *testing.T) {
 }
 
 func strp(v string) *string { return &v }
-func i64p(v int64) *int64    { return &v }
+func i64p(v int64) *int64   { return &v }
 
 func TestUpsertGarminAndListRecovery(t *testing.T) {
 	s := newTestStore(t)

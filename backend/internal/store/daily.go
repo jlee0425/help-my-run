@@ -16,8 +16,8 @@ type DeviceToken struct {
 // DailyDecision is the daily_decisions row. Session JSONs are raw PlanDay JSON
 // strings so the store stays agnostic of llm types; nil columns are *string.
 type DailyDecision struct {
-	Date                string  // PK, local date YYYY-MM-DD
-	ReadinessColor      string  // "green"|"amber"|"red"
+	Date                string // PK, local date YYYY-MM-DD
+	ReadinessColor      string // "green"|"amber"|"red"
 	DriversJSON         string
 	OriginalSessionJSON *string // PlanDay JSON or nil
 	AdjustedSessionJSON *string // PlanDay JSON or nil

@@ -266,3 +266,22 @@ func TestTodayRequiresAuth(t *testing.T) {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
+
+func TestRegisteredTokenIsDroppable(t *testing.T) {
+	h, s := newTestServer(t)
+	body := `{"expo_push_token":"ExponentPushToken[drop]","platform":"android"}`
+	if rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body); rec.Code != http.StatusOK {
+		t.Fatalf("register status = %d", rec.Code)
+	}
+	toks, _ := s.ListDeviceTokens()
+	if len(toks) != 1 {
+		t.Fatalf("tokens after register = %d, want 1", len(toks))
+	}
+	if err := s.DeleteDeviceToken("ExponentPushToken[drop]"); err != nil {
+		t.Fatalf("DeleteDeviceToken: %v", err)
+	}
+	toks, _ = s.ListDeviceTokens()
+	if len(toks) != 0 {
+		t.Errorf("tokens after drop = %d, want 0", len(toks))
+	}
+}

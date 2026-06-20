@@ -28,7 +28,7 @@ func TestSendOK(t *testing.T) {
 	c := &push.Client{BaseURL: srv.URL, HTTPClient: srv.Client()}
 	err := c.Send(context.Background(), push.Message{
 		To: "ExponentPushToken[x]", Title: "Today: AMBER", Body: "Trimmed tempo.",
-		Data: map[string]interface{}{"date": "2026-06-20", "action": "SOFTEN"},
+		Data:  map[string]interface{}{"date": "2026-06-20", "action": "SOFTEN"},
 		Sound: "default", Priority: "high", ChannelID: "default",
 	})
 	if err != nil {

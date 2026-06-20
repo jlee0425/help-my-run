@@ -111,8 +111,8 @@ type fakeMultipartFile struct {
 	r *bytes.Reader
 }
 
-func (f *fakeMultipartFile) Read(p []byte) (int, error)  { return f.r.Read(p) }
-func (f *fakeMultipartFile) Close() error                { return nil }
+func (f *fakeMultipartFile) Read(p []byte) (int, error) { return f.r.Read(p) }
+func (f *fakeMultipartFile) Close() error               { return nil }
 func (f *fakeMultipartFile) Seek(o int64, w int) (int64, error) {
 	return f.r.Seek(o, w)
 }
