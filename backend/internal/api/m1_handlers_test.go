@@ -12,17 +12,20 @@ import (
 
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
+	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 )
 
 // fakeCoach is the injected api.Coach for handler tests.
 type fakeCoach struct {
-	parseErr   error
-	genErr     error
-	fitnessErr error
-	lastWeek   string
-	lastEdited *llm.CrossFitWeekParsed
-	lastImage  string
+	parseErr       error
+	genErr         error
+	fitnessErr     error
+	adjustErr      error
+	lastWeek       string
+	lastEdited     *llm.CrossFitWeekParsed
+	lastImage      string
+	lastAdjustDate string
 }
 
 func (f *fakeCoach) ParseCrossFit(ctx context.Context, weekStart, imagePath string) (llm.CrossFitWeekParsed, string, error) {
@@ -57,6 +60,15 @@ func (f *fakeCoach) Fitness(ctx context.Context) (metrics.FitnessMetrics, error)
 		return metrics.FitnessMetrics{}, f.fitnessErr
 	}
 	return metrics.FitnessMetrics{WeeklyVolumeKm: 18.2, SafeWeeklyTargetKm: 20, RecoveryTrend: "improving"}, nil
+}
+
+func (f *fakeCoach) AdjustToday(ctx context.Context, date string, rd readiness.Readiness, today *llm.PlanDay) (llm.DailyDecisionParsed, string, string, error) {
+	f.lastAdjustDate = date
+	if f.adjustErr != nil {
+		return llm.DailyDecisionParsed{}, "", "", f.adjustErr
+	}
+	dec := llm.DailyDecisionParsed{Action: llm.ActionStand, AdjustedSession: today, Rationale: "stand"}
+	return dec, `{"action":"STAND"}`, "ai", nil
 }
 
 func doBody(t *testing.T, h http.Handler, method, path, token, body string) *httptest.ResponseRecorder {
@@ -213,7 +225,7 @@ func TestPlanGet(t *testing.T) {
 	ctx := `{"c":"p"}`
 	_, _ = s.InsertPlan(store.Plan{
 		WeekStart: "2026-06-22", GeneratedAt: "2026-06-20T08:00:00Z", Status: "generated",
-		PlanJSON: `{"fitness_summary":"f","weekly_target_km":20,"days":[{"date":"2026-06-22","dow":"Mon","run_type":"rest","distance_km":0,"pace_target":"","time_note":"","optional_if_cns":false,"rationale":"r"}],"week_rationale":"wr","one_flag":"of"}`,
+		PlanJSON:       `{"fitness_summary":"f","weekly_target_km":20,"days":[{"date":"2026-06-22","dow":"Mon","run_type":"rest","distance_km":0,"pace_target":"","time_note":"","optional_if_cns":false,"rationale":"r"}],"week_rationale":"wr","one_flag":"of"}`,
 		FitnessSummary: "f", ContextPackJSON: &ctx, Model: "claude-opus-4-8",
 	})
 	rec := do(t, h, http.MethodGet, "/api/plan?week=2026-06-22", testToken)
