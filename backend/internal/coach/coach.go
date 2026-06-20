@@ -9,6 +9,7 @@ import (
 
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
+	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 )
 
@@ -44,6 +45,18 @@ type ContextPack struct {
 	Profile      ProfilePack            `json:"profile"`
 	CrossFitWeek llm.CrossFitWeekParsed `json:"crossfit_week"`
 	LastWeekPlan *llm.PlanParsed        `json:"last_week_plan"`
+}
+
+// DailyAdjustInput is the JSON piped to claude -p stdin for the daily adjust
+// (M2 Coach Brain). snake_case wire JSON.
+type DailyAdjustInput struct {
+	Date          string                 `json:"date"`
+	Readiness     readiness.Readiness    `json:"readiness"`
+	TodaySession  *llm.PlanDay           `json:"today_session"`
+	Metrics       metrics.FitnessMetrics `json:"metrics"`
+	Profile       ProfilePack            `json:"profile"`
+	CrossFitToday *llm.CrossFitDay       `json:"crossfit_today"`
+	WeekRationale string                 `json:"week_rationale"`
 }
 
 // stage1Args builds the claude -p argv for Stage 1 (image → CrossFit week).

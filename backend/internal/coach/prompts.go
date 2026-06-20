@@ -1,6 +1,12 @@
 package coach
 
-import "fmt"
+import (
+	"fmt"
+
+	"help-my-run/backend/internal/llm"
+	"help-my-run/backend/internal/metrics"
+	"help-my-run/backend/internal/readiness"
+)
 
 // stage1Template instructs claude -p to read the saved schedule image and emit
 // ONLY the Stage-1 CrossFit-week JSON.
@@ -48,3 +54,43 @@ Output ONLY a single JSON object (no prose, no markdown fences) of this shape:
   "one_flag": "the single most important caution"
 }
 Produce EXACTLY 7 day objects (Mon→Sun). distance_km is 0 and pace_target/time_note are "" for rest days.`
+
+// dailyAdjustPrompt is the M2 Coach Brain instruction block for the single-day
+// adjust. The structured DailyAdjustInput is piped on stdin; the model returns
+// ONLY a DailyDecisionParsed JSON object.
+const dailyAdjustPrompt = `You are a CrossFit-aware running coach making a SINGLE-DAY adjustment. You receive a JSON context on stdin: today's date, a deterministic readiness assessment (color GREEN/AMBER/RED plus the driver numbers and reasons), today's already-planned running session (or null if no run is scheduled), computed fitness metrics, the athlete profile + constraints, and today's CrossFit day.
+
+Decide ONE action for TODAY ONLY (do not touch other days):
+- STAND  — keep today's session exactly as planned.
+- SOFTEN — keep the session but reduce volume and/or intensity (lower distance_km, ease pace, or mark optional_if_cns).
+- MOVE   — replace a quality session (tempo/intervals/long) with easy/recovery or rest.
+
+Rules:
+- Respect the readiness gate: GREEN -> default STAND; AMBER -> SOFTEN unless already easy; RED -> MOVE quality to easy/recovery, or shorten an easy run. Never increase load on AMBER/RED.
+- If no run is scheduled today (today_session is null), return action "REST_DAY" with a null adjusted_session and a short readiness note.
+- Keep the adjusted session faithful to the M1 plan's intent and the athlete's constraints.
+
+Output ONLY a single JSON object (no prose, no markdown fences) of this EXACT shape:
+{
+  "action": "STAND|SOFTEN|MOVE|REST_DAY",
+  "adjusted_session": {
+    "date":"YYYY-MM-DD","dow":"Mon","run_type":"easy|tempo|recovery|long|rest|intervals",
+    "distance_km":0,"pace_target":"5:45/km","time_note":"~20:00 after CrossFit",
+    "optional_if_cns":false,"rationale":"one line"
+  },
+  "rationale": "one or two sentences: what changed and why, referencing the readiness drivers"
+}
+For action "STAND", adjusted_session MUST equal today's session. For "REST_DAY", adjusted_session MUST be null. distance_km is 0 and pace_target/time_note are "" for rest.`
+
+// buildDailyAdjustInput assembles the stdin payload for the daily-adjust call.
+func buildDailyAdjustInput(date string, rd readiness.Readiness, today *llm.PlanDay, fit metrics.FitnessMetrics, profile ProfilePack, crossfitToday *llm.CrossFitDay, weekRationale string) DailyAdjustInput {
+	return DailyAdjustInput{
+		Date:          date,
+		Readiness:     rd,
+		TodaySession:  today,
+		Metrics:       fit,
+		Profile:       profile,
+		CrossFitToday: crossfitToday,
+		WeekRationale: weekRationale,
+	}
+}
