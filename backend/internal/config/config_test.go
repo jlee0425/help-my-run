@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"testing"
+
+	"github.com/kelseyhightower/envconfig"
 )
 
 // setEnv sets the given env vars for the duration of the test and TRULY UNSETS
@@ -142,5 +144,52 @@ func TestLoadM1Explicit(t *testing.T) {
 	}
 	if cfg.ImageDir != "/srv/data/cf" {
 		t.Errorf("ImageDir = %q, want %q", cfg.ImageDir, "/srv/data/cf")
+	}
+}
+
+func TestM2ConfigDefaults(t *testing.T) {
+	t.Setenv("STRAVA_CLIENT_ID", "id")
+	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
+	t.Setenv("STRAVA_REDIRECT_URL", "http://localhost/cb")
+	t.Setenv("API_TOKEN", "tok")
+
+	var c Config
+	if err := envconfig.Process("", &c); err != nil {
+		t.Fatalf("envconfig.Process error = %v", err)
+	}
+	if c.AgentEnabledDefault != true {
+		t.Errorf("AgentEnabledDefault = %v, want true", c.AgentEnabledDefault)
+	}
+	if c.AgentRunTime != "05:30" {
+		t.Errorf("AgentRunTime = %q, want 05:30", c.AgentRunTime)
+	}
+	if c.AgentTimezone != "UTC" {
+		t.Errorf("AgentTimezone = %q, want UTC", c.AgentTimezone)
+	}
+	if c.AgentTickInterval != "1m" {
+		t.Errorf("AgentTickInterval = %q, want 1m", c.AgentTickInterval)
+	}
+	if c.ExpoPushBaseURL != "https://exp.host" {
+		t.Errorf("ExpoPushBaseURL = %q, want https://exp.host", c.ExpoPushBaseURL)
+	}
+}
+
+func TestM2ConfigOverrides(t *testing.T) {
+	t.Setenv("STRAVA_CLIENT_ID", "id")
+	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
+	t.Setenv("STRAVA_REDIRECT_URL", "http://localhost/cb")
+	t.Setenv("API_TOKEN", "tok")
+	t.Setenv("AGENT_ENABLED", "false")
+	t.Setenv("AGENT_RUN_TIME", "06:00")
+	t.Setenv("AGENT_TZ", "Asia/Seoul")
+	t.Setenv("EXPO_PUSH_BASE_URL", "http://localhost:9999")
+
+	var c Config
+	if err := envconfig.Process("", &c); err != nil {
+		t.Fatalf("envconfig.Process error = %v", err)
+	}
+	if c.AgentEnabledDefault != false || c.AgentRunTime != "06:00" ||
+		c.AgentTimezone != "Asia/Seoul" || c.ExpoPushBaseURL != "http://localhost:9999" {
+		t.Errorf("overrides not applied: %+v", c)
 	}
 }
