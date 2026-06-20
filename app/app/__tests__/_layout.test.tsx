@@ -11,6 +11,11 @@ jest.mock('expo-router', () => {
   return { Stack };
 });
 
+const mockRegister = jest.fn(() => Promise.resolve('ExponentPushToken[abc]'));
+jest.mock('../../src/lib/notifications', () => ({
+  registerForPushNotificationsAsync: () => mockRegister(),
+}));
+
 import RootLayout from '../_layout';
 
 // A probe that throws (caught by RTL) if no QueryClient is in context.
@@ -20,6 +25,13 @@ function QueryClientProbe() {
 }
 
 describe('RootLayout', () => {
+  // Several cases mount <RootLayout />, and each mount fires the push-registration
+  // effect once. Clear the shared module-scoped spy between cases so the
+  // call-count assertions reflect only their own render.
+  beforeEach(() => {
+    mockRegister.mockClear();
+  });
+
   // render() is async in @testing-library/react-native v14 (React 19
   // test-renderer), so each test awaits it before querying the result.
   it('renders without crashing', async () => {
@@ -68,5 +80,10 @@ describe('RootLayout', () => {
       Stack.Screen = originalScreen;
     }
     expect(resolvedClient).toBe(queryClient);
+  });
+
+  it('registers for push notifications once on mount', async () => {
+    await render(<RootLayout />);
+    expect(mockRegister).toHaveBeenCalledTimes(1);
   });
 });
