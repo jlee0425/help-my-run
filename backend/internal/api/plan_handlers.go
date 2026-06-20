@@ -10,6 +10,14 @@ import (
 	"help-my-run/backend/internal/store"
 )
 
+// validWeekStart reports whether s is a strict ISO calendar date (YYYY-MM-DD).
+// It rejects anything that does not round-trip exactly, which excludes path
+// separators, traversal sequences, and loosely-formatted dates.
+func validWeekStart(s string) bool {
+	t, err := time.Parse("2006-01-02", s)
+	return err == nil && t.Format("2006-01-02") == s
+}
+
 func (h *handlers) crossfitParse(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad multipart form"})
@@ -18,6 +26,10 @@ func (h *handlers) crossfitParse(w http.ResponseWriter, r *http.Request) {
 	weekStart := r.FormValue("week_start")
 	if weekStart == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "week_start required"})
+		return
+	}
+	if !validWeekStart(weekStart) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "week_start must be an ISO date (YYYY-MM-DD)"})
 		return
 	}
 	file, hdr, err := r.FormFile("image")
@@ -65,6 +77,10 @@ func (h *handlers) planGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.WeekStart == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "week_start required"})
+		return
+	}
+	if !validWeekStart(req.WeekStart) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "week_start must be an ISO date (YYYY-MM-DD)"})
 		return
 	}
 	// If no edited week supplied, a stored week must exist.
