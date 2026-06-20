@@ -46,3 +46,21 @@ type PlanParsed struct {
 	WeekRationale  string    `json:"week_rationale"`
 	OneFlag        string    `json:"one_flag"`
 }
+
+// DailyAction is the single-day adjust action enum (M2 daily coach).
+type DailyAction string
+
+const (
+	ActionStand   DailyAction = "STAND"
+	ActionSoften  DailyAction = "SOFTEN"
+	ActionMove    DailyAction = "MOVE"
+	ActionRestDay DailyAction = "REST_DAY"
+)
+
+// DailyDecisionParsed is the EXACT JSON claude -p emits for the daily adjust.
+// AdjustedSession reuses PlanDay verbatim; it is nil for REST_DAY.
+type DailyDecisionParsed struct {
+	Action          DailyAction `json:"action"`
+	AdjustedSession *PlanDay    `json:"adjusted_session"`
+	Rationale       string      `json:"rationale"`
+}

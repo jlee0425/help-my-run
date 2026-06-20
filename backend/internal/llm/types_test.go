@@ -44,3 +44,39 @@ func TestPlanParsedRoundTrip(t *testing.T) {
 }
 
 func json_contains(b []byte, sub string) bool { return contains(string(b), sub) }
+
+func TestDailyDecisionParsedRoundTrip(t *testing.T) {
+	in := `{"action":"SOFTEN","adjusted_session":{"date":"2026-06-20","dow":"Fri","run_type":"easy","distance_km":4.5,"pace_target":"6:00/km","time_note":"~20:00 after CrossFit","optional_if_cns":true,"rationale":"trimmed"},"rationale":"HRV down"}`
+	var d DailyDecisionParsed
+	if err := json.Unmarshal([]byte(in), &d); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if d.Action != ActionSoften {
+		t.Errorf("action = %q, want SOFTEN", d.Action)
+	}
+	if d.AdjustedSession == nil || d.AdjustedSession.RunType != "easy" || d.AdjustedSession.DistanceKm != 4.5 {
+		t.Errorf("adjusted = %+v", d.AdjustedSession)
+	}
+	if d.Rationale != "HRV down" {
+		t.Errorf("rationale = %q", d.Rationale)
+	}
+}
+
+func TestDailyDecisionParsedRestDayNullSession(t *testing.T) {
+	var d DailyDecisionParsed
+	if err := json.Unmarshal([]byte(`{"action":"REST_DAY","adjusted_session":null,"rationale":"rest"}`), &d); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if d.Action != ActionRestDay {
+		t.Errorf("action = %q, want REST_DAY", d.Action)
+	}
+	if d.AdjustedSession != nil {
+		t.Errorf("adjusted = %+v, want nil", d.AdjustedSession)
+	}
+}
+
+func TestDailyActionConstants(t *testing.T) {
+	if ActionStand != "STAND" || ActionSoften != "SOFTEN" || ActionMove != "MOVE" || ActionRestDay != "REST_DAY" {
+		t.Errorf("action consts = %q/%q/%q/%q", ActionStand, ActionSoften, ActionMove, ActionRestDay)
+	}
+}
