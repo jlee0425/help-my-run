@@ -129,6 +129,12 @@ export interface PushRegisterRequest {
   platform: 'ios' | 'android';
 }
 
+export interface PushRegisterResponse {
+  expo_push_token: string;
+  platform: string;
+  updated_at: string;
+}
+
 export interface RunResult {
   date: string;
   skipped: boolean;

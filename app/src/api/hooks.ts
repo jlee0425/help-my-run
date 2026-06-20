@@ -18,6 +18,7 @@ import type {
   TodayBriefing,
   RunResult,
   PushRegisterRequest,
+  PushRegisterResponse,
 } from './types';
 
 export function useStatus() {
@@ -161,6 +162,6 @@ export function useRunAgent() {
 export function useRegisterPushToken() {
   return useMutation({
     mutationFn: (body: PushRegisterRequest) =>
-      apiPost<PushRegisterRequest>('/api/push/register', body),
+      apiPost<PushRegisterResponse>('/api/push/register', body),
   });
 }

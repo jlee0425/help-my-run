@@ -258,6 +258,92 @@ func TestAssess(t *testing.T) {
 	}
 }
 
+// TestAssessRecoveryTrendAggregation pins the SHIPPED recovery-trend modifier
+// semantics: a "declining" trend adds one amber-weight signal ONLY when no
+// direct per-signal amber/red already fired, and it never double-counts on top
+// of a day that direct signals already flagged. See the block comment in
+// readiness.go (Recovery-trend modifier).
+func TestAssessRecoveryTrendAggregation(t *testing.T) {
+	now := mustNow(t, "2026-06-20T05:30:00Z")
+	const trendReason = "Recovery trend declining"
+
+	// decliningNoDirect: row0 is all-nominal vs its baseline (HRV 58 == baseline
+	// 58, RHR 50 == baseline 50, sleep 7.5h, score 70, BB 80) so NO direct signal
+	// fires. The full row sequence declines on sleep score (recent half ~70 vs
+	// older half 85, > the 3% deadband) while HRV/RHR stay flat -> RecoveryTrend
+	// == "declining". The trend is the ONLY thing that can move the color.
+	decliningNoDirect := []store.RecoveryDay{
+		mkDay("2026-06-20", i64p(27000), i64p(70), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-19", i64p(27000), i64p(70), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-18", i64p(27000), i64p(70), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-17", i64p(27000), i64p(70), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-16", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-15", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-14", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-13", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+	}
+
+	// decliningWithRed: identical declining row sequence, but row0 HRV drops to 48
+	// (~-17% vs baseline 58) which is a DIRECT RED on its own. Because a direct
+	// signal already fired, the declining trend must NOT add another amber (no
+	// double-count): the color is exactly what the direct red alone produces (RED)
+	// and the trend reason must be absent.
+	decliningWithRed := []store.RecoveryDay{
+		mkDay("2026-06-20", i64p(27000), i64p(85), i64p(48), i64p(50), i64p(80)),
+		mkDay("2026-06-19", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-18", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-17", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-16", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-15", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-14", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-13", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+	}
+
+	tests := []struct {
+		name           string
+		rows           []store.RecoveryDay
+		wantColor      Color
+		wantTrendAdded bool // whether the "Recovery trend declining" reason should appear
+	}{
+		{
+			name:           "declining trend with no direct signal -> trend adds AMBER",
+			rows:           decliningNoDirect,
+			wantColor:      ColorAmber,
+			wantTrendAdded: true,
+		},
+		{
+			name:           "declining trend with a direct RED -> stays RED, trend not additive",
+			rows:           decliningWithRed,
+			wantColor:      ColorRed,
+			wantTrendAdded: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Guard the premise: both fixtures must actually classify as declining,
+			// otherwise the test would pass vacuously.
+			if got := metricsTrend(tt.rows); got != "declining" {
+				t.Fatalf("fixture trend = %q, want declining (test premise)", got)
+			}
+			r := Assess(tt.rows, now)
+			if r.Color != tt.wantColor {
+				t.Errorf("Assess color = %q, want %q (reasons=%v)", r.Color, tt.wantColor, r.Reasons)
+			}
+			hasTrend := false
+			for _, reason := range r.Reasons {
+				if reason == trendReason {
+					hasTrend = true
+					break
+				}
+			}
+			if hasTrend != tt.wantTrendAdded {
+				t.Errorf("trend reason present = %v, want %v (reasons=%v)", hasTrend, tt.wantTrendAdded, r.Reasons)
+			}
+		})
+	}
+}
+
 func TestAssessEmpty(t *testing.T) {
 	now := mustNow(t, "2026-06-20T05:30:00Z")
 	r := Assess(nil, now)

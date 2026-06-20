@@ -232,11 +232,17 @@ func Assess(recovery []store.RecoveryDay, now time.Time) Readiness {
 		drivers.DataComplete = false
 	}
 
-	// --- Recovery-trend modifier: only when NO direct signal already fired. ---
-	// A declining trend adds one amber-weight ONLY when no per-signal amber/red has
-	// already been recorded; otherwise a single direct amber would double-count
-	// (direct amber + trend amber => 2 ambers => spurious RED). When a direct
-	// signal already fired, the trend is informational (a reason) but not additive.
+	// --- Recovery-trend modifier: applied ONLY when NO direct signal already fired. ---
+	// Intentional, shipped semantics (do not "fix" to always apply):
+	//   - "declining": adds exactly one amber-weight signal, but ONLY when no
+	//     per-signal amber/red was recorded above. If any direct signal already
+	//     fired, the trend is deliberately NOT additive — otherwise a single
+	//     direct amber + a trend amber would total 2 ambers and confirm a
+	//     spurious RED, and a direct red would be double-counted. So the trend
+	//     can promote GREEN->AMBER but never pushes an already-flagged day to a
+	//     worse color.
+	//   - "improving" (and "stable"): no-op. The trend never cancels or downgrades
+	//     a direct concern, and with no direct concern there is nothing to act on.
 	if amberCount == 0 && redCount == 0 {
 		switch drivers.RecoveryTrend {
 		case "declining":
@@ -244,7 +250,7 @@ func Assess(recovery []store.RecoveryDay, now time.Time) Readiness {
 			level = worse(level, levelAmber)
 			reasons = append(reasons, "Recovery trend declining")
 		case "improving":
-			// no direct concerns + improving trend: nothing to cancel.
+			// no-op: nothing to cancel (see block comment).
 		}
 	}
 
