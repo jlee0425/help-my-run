@@ -44,6 +44,34 @@ Run the interactive login once. It will prompt for an **MFA code** if your Garmi
 make garmin-login
 ```
 
+### Claude Code (M1 plan generation)
+
+M1 generates plans via the `claude` CLI under your Claude subscription (no API key needed):
+
+1. Install the Claude Code CLI on the host.
+2. Log in once (interactive, opens a browser):
+
+   ```bash
+   claude auth login
+   ```
+
+   Do NOT use `claude auth login --console` (that switches to the metered API key path).
+
+   **Headless / remote host?** `claude -p` reads `~/.claude/.credentials.json`, so it only
+   works where `claude auth login` has been run interactively (e.g. your dev laptop). On a
+   browser-less VPS/CI host, run `claude setup-token` once on a machine with a browser to mint
+   a long-lived subscription token, then expose that token in this host's environment so
+   `claude -p` authenticates non-interactively. `ANTHROPIC_API_KEY` remains a paid fallback.
+3. Set the M1 env vars in `.env` (defaults shown):
+
+   ```bash
+   CLAUDE_BIN=claude
+   CLAUDE_MODEL=claude-opus-4-8
+   IMAGE_DIR=./data/crossfit
+   ```
+
+`IMAGE_DIR` must be writable by the backend (uploaded box-schedule photos are saved there and read by `claude -p`).
+
 ## Running
 
 ```bash
