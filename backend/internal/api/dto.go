@@ -110,7 +110,7 @@ type recoveryResp struct {
 	Recovery []recoveryDayDTO `json:"recovery"`
 }
 
-// --- M1 /api/profile ---
+// --- M1 /api/profile (extended in M2) ---
 type profileDTO struct {
 	TargetWeeklyKm     float64 `json:"target_weekly_km"`
 	ProgressionMode    string  `json:"progression_mode"`
@@ -119,6 +119,9 @@ type profileDTO struct {
 	MaxHRBpm           *int64  `json:"max_hr_bpm"`
 	RunConstraintsJSON string  `json:"run_constraints_json"`
 	GoalText           string  `json:"goal_text"`
+	DailyRunTime       string  `json:"daily_run_time"` // "HH:MM" 24h local (M2)
+	Timezone           string  `json:"timezone"`       // IANA (M2)
+	AgentEnabled       bool    `json:"agent_enabled"`  // M2 daily agent on/off
 	UpdatedAt          string  `json:"updated_at,omitempty"`
 }
 
@@ -142,4 +145,43 @@ type planDayDTO struct {
 	TimeNote      string  `json:"time_note"`
 	OptionalIfCNS bool    `json:"optional_if_cns"`
 	Rationale     string  `json:"rationale"`
+}
+
+// --- M2 /api/push/register ---
+type pushRegisterRequestDTO struct {
+	ExpoPushToken string `json:"expo_push_token"`
+	Platform      string `json:"platform"` // "ios"|"android"
+}
+type pushRegisterResponseDTO struct {
+	ExpoPushToken string `json:"expo_push_token"`
+	Platform      string `json:"platform"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+// --- M2 /api/today ---
+type readinessDriversDTO struct {
+	Date            string   `json:"date"`
+	SleepHours      *float64 `json:"sleep_hours"`
+	SleepScore      *int64   `json:"sleep_score"`
+	HRVLastNightMs  *int64   `json:"hrv_last_night_ms"`
+	HRVBaselineMs   *float64 `json:"hrv_baseline_ms"`
+	HRVDeltaPct     *float64 `json:"hrv_delta_pct"`
+	RHRLastNight    *int64   `json:"rhr_last_night"`
+	RHRBaseline     *float64 `json:"rhr_baseline"`
+	RHRDeltaBpm     *float64 `json:"rhr_delta_bpm"`
+	BodyBatteryHigh *int64   `json:"body_battery_high"`
+	RecoveryTrend   string   `json:"recovery_trend"`
+	DataComplete    bool     `json:"data_complete"`
+}
+type todayResponseDTO struct {
+	Date             string              `json:"date"`
+	ReadinessColor   string              `json:"readiness_color"`
+	Drivers          readinessDriversDTO `json:"drivers"`
+	Reasons          []string            `json:"reasons"`
+	Action           string              `json:"action"`
+	OriginalSession  *planDayDTO         `json:"original_session"`
+	EffectiveSession *planDayDTO         `json:"effective_session"`
+	Rationale        string              `json:"rationale"`
+	Source           string              `json:"source"`
+	Stale            bool                `json:"stale"`
 }
