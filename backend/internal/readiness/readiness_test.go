@@ -329,6 +329,47 @@ func TestAssessDriverNumbers(t *testing.T) {
 	}
 }
 
+func TestAssessThenFallbackEndToEnd(t *testing.T) {
+	now := mustNow(t, "2026-06-20T05:30:00Z")
+	rows := []store.RecoveryDay{
+		mkDay("2026-06-20", i64p(21960), i64p(62), i64p(53), i64p(50), i64p(61)), // 6.1h, score 62, hrv 53
+		mkDay("2026-06-19", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-18", i64p(27000), i64p(85), i64p(59), i64p(50), i64p(80)),
+		mkDay("2026-06-17", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+	}
+	r := Assess(rows, now)
+
+	// Single-amber fixture lands deterministically on AMBER.
+	single := []store.RecoveryDay{
+		mkDay("2026-06-20", i64p(27000), i64p(62), i64p(58), i64p(50), i64p(80)), // only sleep score 62 amber
+		mkDay("2026-06-19", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+		mkDay("2026-06-18", i64p(27000), i64p(85), i64p(59), i64p(50), i64p(80)),
+		mkDay("2026-06-17", i64p(27000), i64p(85), i64p(58), i64p(50), i64p(80)),
+	}
+	ra := Assess(single, now)
+	if ra.Color != ColorAmber {
+		t.Fatalf("single-amber fixture color = %q, want amber", ra.Color)
+	}
+
+	session := &FallbackSession{
+		Date: "2026-06-20", Dow: "Fri", RunType: "tempo", DistanceKm: 6,
+		PaceTarget: "5:05/km", TimeNote: "~20:00 after CrossFit",
+	}
+	dec := Fallback(ra.Color, session, "6:00/km")
+	if dec.Action != FbSoften {
+		t.Errorf("Action = %q, want SOFTEN", dec.Action)
+	}
+	if dec.Adjusted == nil || dec.Adjusted.DistanceKm != 4.5 || dec.Adjusted.PaceTarget != "6:00/km" {
+		t.Errorf("Adjusted = %+v, want 4.5km @ 6:00/km", dec.Adjusted)
+	}
+	if r.Color == ColorRed {
+		mv := Fallback(r.Color, session, "6:00/km")
+		if mv.Action != FbMove || mv.Adjusted == nil || mv.Adjusted.RunType != "recovery" {
+			t.Errorf("RED fallback = %+v, want MOVE to recovery", mv)
+		}
+	}
+}
+
 func mustNow(t *testing.T, s string) time.Time {
 	t.Helper()
 	tm, err := time.Parse(time.RFC3339, s)
