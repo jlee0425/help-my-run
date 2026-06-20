@@ -1,5 +1,22 @@
 import React from 'react';
 import { render, fireEvent, act } from '@testing-library/react-native';
+import type { AthleteProfile } from '../../src/api/types';
+
+const profileData: AthleteProfile = {
+  target_weekly_km: 20,
+  progression_mode: 'build',
+  zone2_ceiling_bpm: null,
+  threshold_bpm: null,
+  max_hr_bpm: null,
+  run_constraints_json: '{}',
+  goal_text: '',
+  daily_run_time: '05:30',
+  timezone: 'Asia/Seoul',
+  agent_enabled: true,
+  updated_at: '2026-06-20T05:00:00Z',
+};
+
+const mockProfileUpdateMutate = jest.fn();
 
 const mockSave = jest.fn();
 const mockConnectMutate = jest.fn();
@@ -28,6 +45,8 @@ jest.mock('../../src/api/hooks', () => ({
   }),
   useSync: () => ({ mutate: mockSyncMutate, isPending: false }),
   useConnectStrava: () => ({ mutate: mockConnectMutate, isPending: false }),
+  useProfile: () => ({ data: profileData, isPending: false, isError: false }),
+  useUpdateProfile: () => ({ mutate: mockProfileUpdateMutate, isPending: false }),
 }));
 
 import SettingsScreen from '../settings';
@@ -87,5 +106,29 @@ describe('SettingsScreen', () => {
       fireEvent.press(getByTestId('btn-sync'));
     });
     expect(mockSyncMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it('prefills the daily run time, timezone, and agent toggle from the profile', async () => {
+    const { getByTestId } = await render(<SettingsScreen />);
+    expect(getByTestId('input-daily-run-time').props.value).toBe('05:30');
+    expect(getByTestId('input-timezone').props.value).toBe('Asia/Seoul');
+    // RN 0.85 Switch surfaces its state via props.value (no accessibilityState.checked).
+    expect(getByTestId('toggle-agent-enabled').props.value).toBe(true);
+  });
+
+  it('saves the agent schedule with edited run time and toggled-off agent', async () => {
+    const { getByTestId } = await render(<SettingsScreen />);
+    await act(async () => { fireEvent.changeText(getByTestId('input-daily-run-time'), '06:15'); });
+    await act(async () => { fireEvent.changeText(getByTestId('input-timezone'), 'UTC'); });
+    // RN 0.85 Switch toggles via its onValueChange callback, not a press.
+    await act(async () => { fireEvent(getByTestId('toggle-agent-enabled'), 'valueChange', false); });
+    await act(async () => { fireEvent.press(getByTestId('btn-save-agent')); });
+    expect(mockProfileUpdateMutate).toHaveBeenCalledTimes(1);
+    const arg = mockProfileUpdateMutate.mock.calls[0][0] as AthleteProfile;
+    expect(arg.daily_run_time).toBe('06:15');
+    expect(arg.timezone).toBe('UTC');
+    expect(arg.agent_enabled).toBe(false);
+    expect(arg.target_weekly_km).toBe(20);
+    expect(arg.progression_mode).toBe('build');
   });
 });

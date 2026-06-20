@@ -10,6 +10,9 @@ const profile: AthleteProfile = {
   max_hr_bpm: 190,
   run_constraints_json: '{"crossfit_days":["Mon","Tue"]}',
   goal_text: 'Build cardio over time',
+  daily_run_time: '05:30',
+  timezone: 'Asia/Seoul',
+  agent_enabled: true,
   updated_at: '2026-06-20T08:00:00Z',
 };
 
