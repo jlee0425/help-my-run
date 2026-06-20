@@ -44,5 +44,57 @@ func nextFire(from time.Time, cfg Config) time.Time {
 	return next
 }
 
-// compile-time guard that context is imported (Run added in the next task).
-var _ = context.Background
+// ConfigProvider re-reads the live schedule (from athlete_profile in production)
+// on every loop iteration. It returns the resolved Config (HH:MM + IANA tz already
+// parsed by the caller), whether the agent is enabled, and any error.
+type ConfigProvider func() (cfg Config, enabled bool, err error)
+
+// errRetry is how long Run waits before retrying after a ConfigProvider error.
+const errRetry = time.Minute
+
+// Run blocks until ctx is cancelled, invoking fn once per scheduled local day.
+// fn receives ctx and the local date (YYYY-MM-DD) it fired for. The schedule is
+// re-read via `next` on EVERY iteration, so changing daily_run_time/timezone
+// recomputes the next fire on the following cycle and toggling agent_enabled=false
+// suppresses fn WITHOUT a restart. An in-process guard (lastFired) prevents
+// same-process double fires; the PERSISTENT once-per-day guard is owned by fn
+// (agent.RunDaily checks agent_runs).
+func Run(ctx context.Context, clk Clock, next ConfigProvider, fn func(ctx context.Context, localDate string)) {
+	var lastFired string
+	for {
+		cfg, enabled, err := next()
+		if err != nil {
+			// Can't read the schedule; wait a bit and retry rather than spin.
+			c, stop := clk.NewTimer(errRetry)
+			select {
+			case <-ctx.Done():
+				stop()
+				return
+			case <-c:
+				continue
+			}
+		}
+
+		fireAt := nextFire(clk.Now(), cfg)
+		d := fireAt.Sub(clk.Now())
+		if d < 0 {
+			d = 0
+		}
+		c, stop := clk.NewTimer(d)
+		select {
+		case <-ctx.Done():
+			stop()
+			return
+		case <-c:
+			if !enabled {
+				// Agent disabled in the profile: skip this fire, re-read next cycle.
+				continue
+			}
+			localDate := clk.Now().In(cfg.Loc).Format("2006-01-02")
+			if localDate != lastFired {
+				lastFired = localDate
+				fn(ctx, localDate)
+			}
+		}
+	}
+}
