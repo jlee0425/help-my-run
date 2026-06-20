@@ -449,3 +449,27 @@ func TestComputeFitnessEmpty(t *testing.T) {
 		t.Errorf("empty SafeWeeklyTargetKm = %v, want 22.0", m.SafeWeeklyTargetKm)
 	}
 }
+
+func TestRecoveryTrendExported(t *testing.T) {
+	ip := func(v int64) *int64 { return &v }
+	day := func(date string, hrv, sleep int64) store.RecoveryDay {
+		return store.RecoveryDay{
+			Date:  date,
+			HRV:   &store.HrvFields{LastNightAvgMs: ip(hrv)},
+			Sleep: &store.SleepFields{Score: ip(sleep)},
+		}
+	}
+	rec := []store.RecoveryDay{
+		day("2026-06-22", 60, 85), day("2026-06-21", 58, 84), day("2026-06-20", 59, 86),
+		day("2026-06-19", 48, 72), day("2026-06-18", 47, 70), day("2026-06-17", 49, 71),
+	}
+	if got, want := RecoveryTrend(rec), recoveryTrend(rec); got != want {
+		t.Errorf("RecoveryTrend = %q, want %q (parity with private)", got, want)
+	}
+	if got := RecoveryTrend(rec); got != "improving" {
+		t.Errorf("RecoveryTrend = %q, want improving", got)
+	}
+	if got := RecoveryTrend(nil); got != "stable" {
+		t.Errorf("RecoveryTrend(nil) = %q, want stable", got)
+	}
+}

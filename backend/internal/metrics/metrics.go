@@ -261,6 +261,13 @@ func recoveryTrend(recovery []store.RecoveryDay) string {
 	}
 }
 
+// RecoveryTrend is the exported wrapper over the private recoveryTrend so other
+// packages (e.g. internal/readiness) can reuse the identical trend computation.
+// recovery is most-recent-first (as ListRecovery returns).
+func RecoveryTrend(recovery []store.RecoveryDay) string {
+	return recoveryTrend(recovery)
+}
+
 // cutbackEpoch is an anchor Monday used to index weeks for the cutback cadence.
 var cutbackEpoch = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
 
