@@ -74,6 +74,9 @@ export interface AthleteProfile {
   max_hr_bpm: number | null;
   run_constraints_json: string;
   goal_text: string;
+  daily_run_time: string;
+  timezone: string;
+  agent_enabled: boolean;
   updated_at?: string;
 }
 
@@ -86,4 +89,53 @@ export interface Fitness {
   recovery_trend: string;
   safe_weekly_target_km: number;
   is_cutback_week: boolean;
+}
+
+// --- M2 types (snake_case wire JSON) ---
+
+export type ReadinessColor = 'green' | 'amber' | 'red';
+export type DailyAction = 'STAND' | 'SOFTEN' | 'MOVE' | 'REST_DAY';
+
+export interface ReadinessDrivers {
+  date: string;
+  sleep_hours: number | null;
+  sleep_score: number | null;
+  hrv_last_night_ms: number | null;
+  hrv_baseline_ms: number | null;
+  hrv_delta_pct: number | null;
+  rhr_last_night: number | null;
+  rhr_baseline: number | null;
+  rhr_delta_bpm: number | null;
+  body_battery_high: number | null;
+  recovery_trend: string;
+  data_complete: boolean;
+}
+
+export interface TodayBriefing {
+  date: string;
+  readiness_color: ReadinessColor;
+  drivers: ReadinessDrivers;
+  reasons: string[];
+  action: DailyAction;
+  original_session: PlanDay | null;
+  effective_session: PlanDay | null;
+  rationale: string;
+  source: 'ai' | 'fallback';
+  stale: boolean;
+}
+
+export interface PushRegisterRequest {
+  expo_push_token: string;
+  platform: 'ios' | 'android';
+}
+
+export interface RunResult {
+  date: string;
+  skipped: boolean;
+  readiness_color: ReadinessColor;
+  action: DailyAction;
+  source: 'ai' | 'fallback';
+  stale: boolean;
+  pushed: boolean;
+  error: string | null;
 }
