@@ -43,7 +43,9 @@ export default function ProfileScreen() {
   }, [loaded]);
 
   const onSave = () => {
+    if (!loaded) return;
     const body: AthleteProfile = {
+      ...loaded,
       target_weekly_km: parseFloatOr(targetKm, 20),
       progression_mode: mode,
       zone2_ceiling_bpm: parseIntOrNull(zone2),

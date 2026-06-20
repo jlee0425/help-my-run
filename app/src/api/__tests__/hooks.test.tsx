@@ -144,7 +144,9 @@ describe('useProfile', () => {
     const data: AthleteProfile = {
       target_weekly_km: 20, progression_mode: 'build',
       zone2_ceiling_bpm: null, threshold_bpm: null, max_hr_bpm: null,
-      run_constraints_json: '{}', goal_text: 'Build cardio', updated_at: '2026-06-20T08:00:00Z',
+      run_constraints_json: '{}', goal_text: 'Build cardio',
+      daily_run_time: '05:30', timezone: 'UTC', agent_enabled: true,
+      updated_at: '2026-06-20T08:00:00Z',
     };
     mockApiGet.mockResolvedValue(data);
     const { result } = await renderHook(() => useProfile(), { wrapper: createWrapper() });
@@ -160,6 +162,7 @@ describe('useUpdateProfile', () => {
       target_weekly_km: 25, progression_mode: 'hold',
       zone2_ceiling_bpm: 150, threshold_bpm: 168, max_hr_bpm: 190,
       run_constraints_json: '{}', goal_text: 'Hold steady',
+      daily_run_time: '05:30', timezone: 'UTC', agent_enabled: true,
     };
     mockApiPut.mockResolvedValue(profile);
     const { result } = await renderHook(() => useUpdateProfile(), { wrapper: createWrapper() });

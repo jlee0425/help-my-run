@@ -180,6 +180,9 @@ describe('M1 API types', () => {
       max_hr_bpm: null,
       run_constraints_json: '{}',
       goal_text: 'Build cardio over time',
+      daily_run_time: '05:30',
+      timezone: 'Asia/Seoul',
+      agent_enabled: true,
       updated_at: '2026-06-20T08:00:00Z',
     };
     const fitness: Fitness = {

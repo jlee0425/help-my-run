@@ -1,16 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
 import { useSettings } from '../src/api/settings';
-import { useStatus, useSync, useConnectStrava } from '../src/api/hooks';
+import { useStatus, useSync, useConnectStrava, useProfile, useUpdateProfile } from '../src/api/hooks';
+import type { AthleteProfile } from '../src/api/types';
 
 export default function SettingsScreen() {
   const settings = useSettings();
   const status = useStatus();
   const sync = useSync();
   const connectStrava = useConnectStrava();
+  const profile = useProfile();
+  const updateProfile = useUpdateProfile();
 
   const [baseUrl, setBaseUrl] = useState('');
   const [token, setToken] = useState('');
+  const [dailyRunTime, setDailyRunTime] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [agentEnabled, setAgentEnabled] = useState(true);
 
   useEffect(() => {
     if (!settings.loading) {
@@ -18,6 +24,26 @@ export default function SettingsScreen() {
       setToken(settings.token);
     }
   }, [settings.loading, settings.baseUrl, settings.token]);
+
+  const loadedProfile = profile.data;
+  useEffect(() => {
+    if (loadedProfile) {
+      setDailyRunTime(loadedProfile.daily_run_time);
+      setTimezone(loadedProfile.timezone);
+      setAgentEnabled(loadedProfile.agent_enabled);
+    }
+  }, [loadedProfile]);
+
+  const onSaveAgent = () => {
+    if (!loadedProfile) return;
+    const body: AthleteProfile = {
+      ...loadedProfile,
+      daily_run_time: dailyRunTime,
+      timezone,
+      agent_enabled: agentEnabled,
+    };
+    updateProfile.mutate(body);
+  };
 
   const stravaConnected = status.data?.strava.connected ?? false;
   const garminConnected = status.data?.garmin.connected ?? false;
@@ -89,6 +115,21 @@ export default function SettingsScreen() {
           {sync.data.garmin.status} ({sync.data.garmin.synced})
         </Text>
       ) : null}
+
+      <Text style={styles.heading}>Daily coach</Text>
+      <Text style={styles.label}>Daily run time (HH:MM, 24h local)</Text>
+      <TextInput testID="input-daily-run-time" style={styles.input} autoCapitalize="none" autoCorrect={false}
+        placeholder="05:30" value={dailyRunTime} onChangeText={setDailyRunTime} />
+      <Text style={styles.label}>Timezone (IANA)</Text>
+      <TextInput testID="input-timezone" style={styles.input} autoCapitalize="none" autoCorrect={false}
+        placeholder="Asia/Seoul" value={timezone} onChangeText={setTimezone} />
+      <View style={styles.toggleRow}>
+        <Text style={styles.label}>Agent enabled</Text>
+        <Switch testID="toggle-agent-enabled" value={agentEnabled} onValueChange={setAgentEnabled} />
+      </View>
+      <Pressable testID="btn-save-agent" style={styles.button} disabled={updateProfile.isPending} onPress={onSaveAgent}>
+        <Text style={styles.buttonText}>{updateProfile.isPending ? 'Saving…' : 'Save daily coach'}</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -114,4 +155,5 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   statusLine: { fontSize: 15, color: '#222' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
 });
