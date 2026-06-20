@@ -1,8 +1,18 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '../src/api/queryClient';
+import { registerForPushNotificationsAsync } from '../src/lib/notifications';
 
 export default function RootLayout() {
+  useEffect(() => {
+    // Fire-and-forget: register the device's Expo push token on launch. Returns
+    // null (no-op) on simulator / denied / missing projectId.
+    registerForPushNotificationsAsync().catch(() => {
+      // best-effort; the app works without push and still fetches Today over the API.
+    });
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <Stack>
