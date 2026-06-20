@@ -229,6 +229,10 @@ func TestStravaCallbackExchangesAndPersists(t *testing.T) {
 	if err := s.Migrate(); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// Persist the CSRF state the callback URL below carries (callback now validates it).
+	if err := s.SaveOAuthState("xyz"); err != nil {
+		t.Fatalf("SaveOAuthState: %v", err)
+	}
 	deps := Deps{
 		Store:    s,
 		Strava:   strava.NewWithBase("12345", "secret", "http://localhost:8080/api/strava/callback", srv.URL),
@@ -237,7 +241,7 @@ func TestStravaCallbackExchangesAndPersists(t *testing.T) {
 	}
 	h := NewRouter(deps)
 
-	// Callback has NO auth header.
+	// Callback has NO auth header. The URL must carry &state=xyz (saved above).
 	rec := do(t, h, http.MethodGet, "/api/strava/callback?code=the-code&scope=read,activity:read_all&state=xyz", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)

@@ -63,6 +63,10 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) stravaConnect(w http.ResponseWriter, r *http.Request) {
 	state := randomState()
+	if err := h.d.Store.SaveOAuthState(state); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
 	url := h.d.Strava.AuthorizeURL(state)
 	writeJSON(w, http.StatusOK, connectResp{AuthorizeURL: url})
 }
@@ -78,6 +82,11 @@ func randomState() string {
 func (h *handlers) stravaCallback(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("error") != "" || r.URL.Query().Get("code") == "" {
 		writeHTML(w, "Strava connection failed. You can close this tab.")
+		return
+	}
+	state := r.URL.Query().Get("state")
+	if state == "" || h.d.Store.ConsumeOAuthState(state) != nil {
+		writeHTML(w, "Strava connection failed (invalid state). You can close this tab.")
 		return
 	}
 	code := r.URL.Query().Get("code")
