@@ -33,6 +33,8 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
 			return "ok", 0, nil, "ok", 0, nil
 		},
+		Coach:    &fakeCoach{},
+		ImageDir: t.TempDir(),
 	}
 	return NewRouter(deps), s
 }
