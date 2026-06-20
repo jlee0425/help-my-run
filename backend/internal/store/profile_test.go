@@ -81,3 +81,32 @@ func TestUpsertAthleteProfileRoundTrip(t *testing.T) {
 		t.Errorf("athlete_profile row count = %d, want 1", rows)
 	}
 }
+
+func TestAthleteProfileM2Columns(t *testing.T) {
+	s := newTestStore(t)
+
+	p, err := s.GetAthleteProfile()
+	if err != nil {
+		t.Fatalf("GetAthleteProfile error = %v", err)
+	}
+	if p.DailyRunTime != "05:30" || p.Timezone != "UTC" || p.AgentEnabled != true {
+		t.Errorf("seed M2 fields = (%q,%q,%v), want (05:30,UTC,true)", p.DailyRunTime, p.Timezone, p.AgentEnabled)
+	}
+
+	p.DailyRunTime = "06:15"
+	p.Timezone = "Asia/Seoul"
+	p.AgentEnabled = false
+	if err := s.UpsertAthleteProfile(p); err != nil {
+		t.Fatalf("UpsertAthleteProfile error = %v", err)
+	}
+	got, err := s.GetAthleteProfile()
+	if err != nil {
+		t.Fatalf("GetAthleteProfile after upsert error = %v", err)
+	}
+	if got.DailyRunTime != "06:15" || got.Timezone != "Asia/Seoul" || got.AgentEnabled != false {
+		t.Errorf("M2 fields = (%q,%q,%v), want (06:15,Asia/Seoul,false)", got.DailyRunTime, got.Timezone, got.AgentEnabled)
+	}
+	if got.TargetWeeklyKm != p.TargetWeeklyKm || got.ProgressionMode != p.ProgressionMode {
+		t.Errorf("M1 fields drifted: got %+v", got)
+	}
+}
