@@ -1,0 +1,12 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "api_error_status": null,
+  "result": "Here is the plan:\n{\"fitness_summary\":\"~18 km/week\",\"weekly_target_km\":20,\"days\":[{\"date\":\"2026-06-22\",\"dow\":\"Mon\",\"run_type\":\"rest\",\"distance_km\":0,\"pace_target\":\"\",\"time_note\":\"\",\"optional_if_cns\":false,\"rationale\":\"Heavy squat day; no run.\"}],\"week_rationale\":\"Quality Thursday.\",\"one_flag\":\"Watch Thursday.\"}\nThat's it.",
+  "stop_reason": "end_turn",
+  "session_id": "s2",
+  "num_turns": 1,
+  "duration_ms": 4100,
+  "total_cost_usd": 0.0
+}
