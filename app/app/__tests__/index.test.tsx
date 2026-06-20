@@ -98,4 +98,9 @@ describe('HomeScreen', () => {
     expect(getByText('Plan my week')).toBeTruthy();
     expect(getByText('Profile')).toBeTruthy();
   });
+
+  it('renders a link to view this week\'s plan', async () => {
+    const { getByText } = await render(<HomeScreen />);
+    expect(getByText("This week's plan")).toBeTruthy();
+  });
 });

@@ -199,17 +199,22 @@ describe('usePlan', () => {
 });
 
 describe('useParseCrossfit', () => {
-  it('uploads the image and returns the parsed week', async () => {
+  it('uploads the image WITH the week_start field and returns the parsed week', async () => {
     const week: CrossFitWeek = { week_start: '2026-06-22', days: [] };
     mockApiUpload.mockResolvedValue(week);
     const { result } = await renderHook(() => useParseCrossfit(), { wrapper: createWrapper() });
     await act(async () => {
-      result.current.mutate({ uri: 'file:///x.jpg', name: 'x.jpg', type: 'image/jpeg' });
+      result.current.mutate({
+        file: { uri: 'file:///x.jpg', name: 'x.jpg', type: 'image/jpeg' },
+        weekStart: '2026-06-22',
+      });
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockApiUpload).toHaveBeenCalledWith('/api/crossfit/parse', {
-      uri: 'file:///x.jpg', name: 'x.jpg', type: 'image/jpeg',
-    });
+    expect(mockApiUpload).toHaveBeenCalledWith(
+      '/api/crossfit/parse',
+      { uri: 'file:///x.jpg', name: 'x.jpg', type: 'image/jpeg' },
+      { fields: { week_start: '2026-06-22' } },
+    );
     expect(result.current.data).toEqual(week);
   });
 });

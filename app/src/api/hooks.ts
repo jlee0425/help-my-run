@@ -102,13 +102,17 @@ export function usePlan(week: string) {
 }
 
 export function useParseCrossfit() {
-  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (file: { uri: string; name: string; type: string }) =>
-      apiUpload<CrossFitWeek>('/api/crossfit/parse', file),
-    onSuccess: (week) => {
-      queryClient.invalidateQueries({ queryKey: ['crossfit', week.week_start] });
-    },
+    mutationFn: ({
+      file,
+      weekStart,
+    }: {
+      file: { uri: string; name: string; type: string };
+      weekStart: string;
+    }) =>
+      apiUpload<CrossFitWeek>('/api/crossfit/parse', file, {
+        fields: { week_start: weekStart },
+      }),
   });
 }
 

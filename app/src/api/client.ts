@@ -40,8 +40,9 @@ export const apiPut = <T>(path: string, body?: unknown) =>
 export async function apiUpload<T>(
   path: string,
   file: { uri: string; name: string; type: string },
-  field = 'image',
+  opts: { field?: string; fields?: Record<string, string> } = {},
 ): Promise<T> {
+  const { field = 'image', fields } = opts;
   const baseUrl = await getBaseUrl();
   const token = await getToken();
   if (!baseUrl) throw new ApiError(0, 'Backend URL not configured');
@@ -49,6 +50,12 @@ export async function apiUpload<T>(
   const form = new FormData();
   // RN FormData accepts this object shape; cast to satisfy DOM lib types.
   form.append(field, { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+  // Extra text form fields (e.g. week_start) the backend requires alongside the image.
+  if (fields) {
+    for (const [key, value] of Object.entries(fields)) {
+      form.append(key, value);
+    }
+  }
 
   const res = await fetch(`${baseUrl}${path}`, {
     method: 'POST',
