@@ -379,3 +379,73 @@ func TestSafeWeeklyTarget(t *testing.T) {
 		})
 	}
 }
+
+func TestComputeFitness(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z") // Monday; weekIndex non-cutback
+
+	acts := []store.Activity{
+		// last 7 days: 10 + 8.2 = 18.2 km.
+		{Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000, MovingTimeS: 3600}, // 6:00/km
+		{Type: "Run", StartTime: "2026-06-17T06:00:00Z", DistanceM: 8200, MovingTimeS: 3000},  // ~6:06/km
+		// 8-28 days: more volume for chronic/4-week avg + a tempo for threshold.
+		{Type: "Run", StartTime: "2026-06-13T06:00:00Z", DistanceM: 8000, MovingTimeS: 2440}, // 5:05/km tempo
+		{Type: "Run", StartTime: "2026-06-06T06:00:00Z", DistanceM: 16000, MovingTimeS: 6400},
+		{Type: "Run", StartTime: "2026-05-30T06:00:00Z", DistanceM: 16000, MovingTimeS: 6400},
+		{Type: "Ride", StartTime: "2026-06-19T06:00:00Z", DistanceM: 40000, MovingTimeS: 3600}, // excluded
+	}
+	ip := func(v int64) *int64 { return &v }
+	recovery := []store.RecoveryDay{
+		{Date: "2026-06-21", HRV: &store.HrvFields{LastNightAvgMs: ip(60)}, Sleep: &store.SleepFields{Score: ip(85)}},
+		{Date: "2026-06-20", HRV: &store.HrvFields{LastNightAvgMs: ip(59)}, Sleep: &store.SleepFields{Score: ip(86)}},
+		{Date: "2026-06-15", HRV: &store.HrvFields{LastNightAvgMs: ip(48)}, Sleep: &store.SleepFields{Score: ip(72)}},
+		{Date: "2026-06-14", HRV: &store.HrvFields{LastNightAvgMs: ip(47)}, Sleep: &store.SleepFields{Score: ip(70)}},
+	}
+	profile := store.AthleteProfile{TargetWeeklyKm: 40, ProgressionMode: "build"}
+
+	m := ComputeFitness(acts, recovery, profile, now)
+
+	if m.WeeklyVolumeKm != 18.2 {
+		t.Errorf("WeeklyVolumeKm = %v, want 18.2", m.WeeklyVolumeKm)
+	}
+	// 28-day total runs = 18.2 + 8 + 16 + 16 = 58.2 -> /4 = 14.55.
+	if m.FourWeekAvgKm != 14.55 {
+		t.Errorf("FourWeekAvgKm = %v, want 14.55", m.FourWeekAvgKm)
+	}
+	// acute=18.2; chronic=14.55; 18.2/14.55=1.2509 -> 1.25.
+	if m.AcuteChronicRatio != 1.25 {
+		t.Errorf("AcuteChronicRatio = %v, want 1.25", m.AcuteChronicRatio)
+	}
+	if m.EasyPace == "" || m.ThresholdPace == "" {
+		t.Errorf("paces should be set, got easy=%q thr=%q", m.EasyPace, m.ThresholdPace)
+	}
+	if m.RecoveryTrend != "improving" {
+		t.Errorf("RecoveryTrend = %q, want improving", m.RecoveryTrend)
+	}
+	// baseline = max(18.2, 14.55) = 18.2; non-cutback build -> 18.2*1.1=20.02 -> 20.0
+	if !m.IsCutbackWeek && m.SafeWeeklyTargetKm != 20.0 {
+		t.Errorf("SafeWeeklyTargetKm = %v, want 20.0 (non-cutback)", m.SafeWeeklyTargetKm)
+	}
+	if m.IsCutbackWeek != isCutbackWeek(now) {
+		t.Errorf("IsCutbackWeek = %v, want %v", m.IsCutbackWeek, isCutbackWeek(now))
+	}
+}
+
+func TestComputeFitnessEmpty(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z")
+	profile := store.AthleteProfile{TargetWeeklyKm: 20, ProgressionMode: "build"}
+	m := ComputeFitness(nil, nil, profile, now)
+
+	if m.WeeklyVolumeKm != 0 || m.FourWeekAvgKm != 0 || m.AcuteChronicRatio != 0 {
+		t.Errorf("empty volumes = %+v, want zeros", m)
+	}
+	if m.EasyPace != "" || m.ThresholdPace != "" {
+		t.Errorf("empty paces = (%q,%q), want empty", m.EasyPace, m.ThresholdPace)
+	}
+	if m.RecoveryTrend != "stable" {
+		t.Errorf("empty RecoveryTrend = %q, want stable", m.RecoveryTrend)
+	}
+	// baseline 0 -> fallback to profile target 20; non-cutback build -> 22.0.
+	if !m.IsCutbackWeek && m.SafeWeeklyTargetKm != 22.0 {
+		t.Errorf("empty SafeWeeklyTargetKm = %v, want 22.0", m.SafeWeeklyTargetKm)
+	}
+}
