@@ -16,6 +16,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 		"API_TOKEN", "DB_PATH", "PORT",
 		"GARMIN_EMAIL", "GARMIN_PASSWORD", "GARMIN_TOKENSTORE",
 		"PYTHON_BIN", "WORKER_SCRIPT", "ANTHROPIC_API_KEY",
+		"CLAUDE_BIN", "CLAUDE_MODEL", "IMAGE_DIR",
 	}
 	for _, k := range all {
 		// t.Setenv first to register restoration of the original value on
@@ -104,5 +105,42 @@ func TestLoadMissingRequired(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want error for missing API_TOKEN")
+	}
+}
+
+func TestLoadM1Defaults(t *testing.T) {
+	setEnv(t, requiredEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.ClaudeBin != "claude" {
+		t.Errorf("ClaudeBin = %q, want default %q", cfg.ClaudeBin, "claude")
+	}
+	if cfg.ClaudeModel != "claude-opus-4-8" {
+		t.Errorf("ClaudeModel = %q, want default %q", cfg.ClaudeModel, "claude-opus-4-8")
+	}
+	if cfg.ImageDir != "./data/crossfit" {
+		t.Errorf("ImageDir = %q, want default %q", cfg.ImageDir, "./data/crossfit")
+	}
+}
+
+func TestLoadM1Explicit(t *testing.T) {
+	env := requiredEnv()
+	env["CLAUDE_BIN"] = "/usr/local/bin/claude"
+	env["CLAUDE_MODEL"] = "claude-opus-4-8"
+	env["IMAGE_DIR"] = "/srv/data/cf"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.ClaudeBin != "/usr/local/bin/claude" {
+		t.Errorf("ClaudeBin = %q, want %q", cfg.ClaudeBin, "/usr/local/bin/claude")
+	}
+	if cfg.ImageDir != "/srv/data/cf" {
+		t.Errorf("ImageDir = %q, want %q", cfg.ImageDir, "/srv/data/cf")
 	}
 }
