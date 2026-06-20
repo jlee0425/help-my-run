@@ -39,14 +39,36 @@ parses the CrossFit image; Claude composes the dated plan + rationale from a cle
 pack. Rejected alternatives: AI-heavy (unreliable arithmetic, costlier, hard to test) and
 rule-based-only (rigid, loses coaching intelligence).
 
-### LLM facts (from the `claude-api` reference)
-- Model: **`claude-opus-4-8`** (vision-capable, 1M context, adaptive thinking; $5/$25 per MTok).
-- Go SDK: `github.com/anthropics/anthropic-sdk-go`, `anthropic.ModelClaudeOpus4_8`.
-- **Vision** via base64 image content blocks; **structured outputs** via
-  `output_config.format` (json_schema) → reliable parse into Go structs.
-- **Adaptive thinking** (`thinking: {type: "adaptive"}`) on the plan call.
-- **Prompt caching** on the stable system prompt + athlete-profile prefix.
-- `ANTHROPIC_API_KEY` already loaded by M0's config (unused until now).
+### LLM access: Claude Code headless under the user's subscription (decided)
+To avoid metered API billing, the backend calls Claude through **Claude Code in headless
+print mode (`claude -p …`)**, which runs under the user's existing Pro/Max subscription —
+**no per-token cost**. The Go backend invokes the `claude` CLI **as a subprocess** (the same
+pattern as M0's Garmin Python worker). The metered Anthropic API + `anthropic-sdk-go` +
+`ANTHROPIC_API_KEY` path is explicitly NOT used (the Claude Agent SDK and raw API both
+require a paid API key).
+
+Implications vs the API path (accepted trade-offs):
+- **Model**: `claude-opus-4-8`, selected via Claude Code settings (`~/.claude/settings.json`
+  or project `.claude/settings.json`).
+- **Structured output**: no schema-guaranteed `output_config.format`. Instead, prompt for
+  JSON, run with `--output-format json` (clean envelope; `.result` holds the model's text),
+  extract the JSON from `.result`, and **parse defensively with one retry** on malformed
+  JSON. The parsed CrossFit week is editable anyway, which absorbs occasional imperfection.
+- **Vision**: no base64 API image block. The backend saves the uploaded image to disk and
+  the prompt instructs `claude -p` to **read that image file** (Claude Code's read tool
+  handles images). Requires the image dir to be readable and the read tool permitted
+  (working dir / `--add-dir` / allowed-tools config).
+- **Setup prerequisite**: the self-hosted host must have the `claude` CLI installed and be
+  logged in once (`claude login`). Documented in the README alongside `make garmin-login`.
+
+### Caveats (documented, accepted for single-user personal use)
+- **Shared rate limits**: `claude -p` draws on the same 5-hour / weekly subscription limits
+  as interactive Claude Code use. ~1 plan/week + occasional regenerates is negligible.
+- **ToS**: single-user, self-hosted, personal use is appropriate for the subscription;
+  high-volume/multi-user would belong on the metered API.
+- **Billing-model risk**: Anthropic announced (then paused, as of mid-June 2026) splitting
+  Agent-SDK / `claude -p` usage into separate plan credits. Today it draws from normal
+  subscription limits; this could change.
 
 ## 3. Goal & success criteria
 
@@ -75,8 +97,10 @@ that places runs intelligently around CrossFit load, with pace targets from real
 - **Coach engine** (`backend/internal/coach`) — assembles the **context pack** (metrics +
   athlete profile + constraints + last week's plan + parsed CrossFit week) and orchestrates
   the two Claude calls.
-- **Claude client** (`backend/internal/llm`) — wraps `anthropic-sdk-go`; base URL / HTTP
-  client injectable so tests run against `httptest` with canned structured JSON.
+- **Claude client** (`backend/internal/llm`) — invokes the `claude` CLI in headless print
+  mode (`claude -p … --output-format json`) via `os/exec`; extracts and parses the JSON the
+  model returns, with one retry on malformed JSON. The command/runner is **injectable** so
+  tests run against a stub that returns canned envelopes (no real `claude`/network in CI).
 - **CrossFit ingestion** — image upload → Claude vision → structured per-day CF model.
 - **Plan storage** + **athlete profile** (§6).
 - **Expo screens** — "Plan my week" (upload → review/edit CF week → generate) and a
@@ -84,24 +108,27 @@ that places runs intelligently around CrossFit load, with pace targets from real
 
 ## 5. Two-stage Claude flow
 
-**Stage 1 — image → CrossFit week.** `claude-opus-4-8` vision + `output_config.format`
-(json_schema). Input: the uploaded image + the user's known pattern as hints (CF Mon–Fri,
-Thu skill/lighter, 18:15–19:15). Output:
+Both stages run via `claude -p --output-format json`; the prompt instructs Claude to emit
+**only** a JSON object matching the documented shape, which the Go client extracts from the
+envelope's `.result` and parses (one retry on malformed JSON).
+
+**Stage 1 — image → CrossFit week.** The backend writes the uploaded image to disk and the
+prompt tells `claude -p` to read that image file. Input also includes the user's known
+pattern as hints (CF Mon–Fri, Thu skill/lighter, 18:15–19:15). Output JSON:
 `{ week_start, days: [{ date, dow, has_crossfit, focus, cns_load: "low"|"med"|"high",
 leg_load: "low"|"med"|"high", notes }] }`. Stored in `crossfit_weeks`; **editable** in the
 app before planning.
 
-**Stage 2 — context pack → plan.** System prompt = the **"Coach Brain"** (a CrossFit-aware
+**Stage 2 — context pack → plan.** A "Coach Brain" instruction block (a CrossFit-aware
 running coach: periodization toward general aerobic improvement; ≤~10% weekly ramp with a
 cutback week; place hard runs on low-CNS/low-leg CrossFit days + weekends; easy stays easy;
-evening-double timing; mark runs optional after high-CNS days). Inputs: the full context
-pack. `thinking: {type: "adaptive"}` + `output_config.format` (json_schema). Output:
+evening-double timing; mark runs optional after high-CNS days) is prepended to the prompt,
+followed by the full context pack. Output JSON:
 `{ fitness_summary, weekly_target_km, days: [{ date, dow, run_type, distance_km,
 pace_target, time_note, optional_if_cns, rationale }], week_rationale, one_flag }`.
-Prompt-cache the Coach Brain + athlete-profile prefix.
 
 Two stages (not one) because image parsing is a distinct, reviewable/editable concern and
-keeps each prompt + schema simple and testable.
+keeps each prompt simple and testable.
 
 ## 6. Data model (added; SQLite)
 
@@ -139,22 +166,27 @@ keeps each prompt + schema simple and testable.
 
 ## 10. Testing
 - **Metrics**: table-driven Go tests over fixture activities/recovery (deterministic).
-- **Claude client/coach**: `httptest` server returning canned structured JSON; assert the
-  request carries the image block (Stage 1) and the json_schema, and that responses parse
-  into the typed structs. **No live API calls in CI.**
+- **Claude client/coach**: inject a stub runner returning canned `claude -p` JSON
+  envelopes; assert the constructed prompt references the image file (Stage 1) and the
+  Coach Brain (Stage 2), that `.result` JSON is extracted and parses into the typed structs,
+  and that malformed JSON triggers exactly one retry. **No real `claude`/network in CI.**
 - **Handlers**: `httptest` for profile / crossfit / plan / fitness, incl. auth rejection.
 - **App**: jest with mocked api client + react-query, for the plan flow and plan view.
-- **Manual integration**: generate a real plan from a real CrossFit photo using a real
-  `ANTHROPIC_API_KEY`.
+- **Manual integration**: generate a real plan from a real CrossFit photo on a host with
+  the `claude` CLI installed and logged in (`claude login`) — no API key needed.
 
 ## 11. Risks & mitigations
 - **CrossFit image parsing wrong/ambiguous.** Mitigate: parsed week is editable before
   planning; persist `raw_response`.
-- **LLM cost / latency.** Mitigate: deterministic math in Go (smaller prompts), prompt
-  caching, on-demand (not per-day) generation. Opus per-plan cost is a few cents — fine for
-  single-user; revisit if multi-user.
-- **Claude unavailable / errors.** Mitigate: surface clearly; the fitness read + metrics
-  still render from local data; retry.
+- **Malformed JSON from `claude -p`.** No schema guarantee in headless mode. Mitigate:
+  explicit "JSON only" prompt, extract from the `--output-format json` envelope, one retry
+  on parse failure, and an editable Stage-1 result.
+- **Shared subscription rate limits / availability.** `claude -p` shares the 5-hour/weekly
+  budget with interactive Claude Code. Mitigate: on-demand (not per-day) generation; surface
+  limit/CLI errors clearly with a "logged in? limit hit?" message; the fitness read +
+  metrics still render from local data without Claude. Subprocess timeout (~2 min).
+- **`claude` CLI not installed / not logged in.** Mitigate: documented setup
+  (`claude login`); the client distinguishes "not found / not logged in" from other errors.
 - **Pace targets without streams.** Easy/threshold estimates come from activity summaries;
   good enough for planning. True time-in-zone needs streams — deferred.
 
