@@ -144,3 +144,49 @@ type Client struct {
 	Model   string
 	Timeout time.Duration
 }
+
+// CallError carries a classified, user-facing failure message from a claude -p call.
+type CallError struct {
+	Msg string
+	Err error
+}
+
+func (e *CallError) Error() string { return e.Msg }
+func (e *CallError) Unwrap() error { return e.Err }
+
+// Call runs one claude -p invocation (Runner), determines success
+// (exitCode==0 && !IsError), extracts the model JSON into v, and retries the
+// entire call exactly once on extraction/unmarshal failure. A classified
+// (non-malformed) failure is returned immediately without retry.
+func (c *Client) Call(ctx context.Context, args []string, stdin string, v any) error {
+	attempt := func() (retryable bool, err error) {
+		out, runErr := c.Runner.Run(ctx, args, stdin)
+
+		var env Envelope
+		if len(out) > 0 {
+			env, _ = ParseEnvelope(out)
+		}
+
+		// Failure: non-zero exit (runErr) OR is_error envelope. Not retryable.
+		if runErr != nil || env.IsError {
+			return false, &CallError{Msg: ClassifyFailure(env, runErr), Err: runErr}
+		}
+
+		// Success path: extract JSON. Malformed -> retryable.
+		if err := ExtractJSON(env.Result, v); err != nil {
+			return true, err
+		}
+		return false, nil
+	}
+
+	retryable, err := attempt()
+	if err == nil {
+		return nil
+	}
+	if !retryable {
+		return err
+	}
+	// One retry.
+	_, err = attempt()
+	return err
+}
