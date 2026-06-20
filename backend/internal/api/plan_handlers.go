@@ -18,6 +18,13 @@ func validWeekStart(s string) bool {
 	return err == nil && t.Format("2006-01-02") == s
 }
 
+// validISODate reports whether s is a strict ISO calendar date (YYYY-MM-DD).
+// Reused by M2 today/undo/agent date params.
+func validISODate(s string) bool {
+	t, err := time.Parse("2006-01-02", s)
+	return err == nil && t.Format("2006-01-02") == s
+}
+
 func (h *handlers) crossfitParse(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad multipart form"})
