@@ -1,6 +1,9 @@
 package store
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // Activity is a normalized Strava run (one row in activities).
 type Activity struct {
@@ -88,6 +91,21 @@ func (s *Store) ListActivities(limit int) ([]Activity, error) {
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// LatestActivityStartTime returns the max start_time across all activities (ISO
+// string), or ErrNotFound when there are no activities. Used as the Strava
+// incremental sync cursor.
+func (s *Store) LatestActivityStartTime() (string, error) {
+	var t sql.NullString
+	err := s.DB.QueryRow(`SELECT MAX(start_time) FROM activities`).Scan(&t)
+	if err != nil {
+		return "", err
+	}
+	if !t.Valid {
+		return "", ErrNotFound
+	}
+	return t.String, nil
 }
 
 // UpsertSplits upserts all splits for an activity (by activity_id+idx PK).
