@@ -45,53 +45,53 @@ func TestFallback(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		color       Color
-		session     *FallbackSession
-		wantAction  string
-		wantAdjNil  bool
-		wantType    string
-		wantDistKm  float64
-		wantPace    string
-		wantOptCNS  bool
+		name       string
+		color      Color
+		session    *FallbackSession
+		wantAction string
+		wantAdjNil bool
+		wantType   string
+		wantDistKm float64
+		wantPace   string
+		wantOptCNS bool
 	}{
 		{
-			name: "RED + quality run -> MOVE to easy recovery, capped 4km",
+			name:  "RED + quality run -> MOVE to easy recovery, capped 4km",
 			color: ColorRed, session: tempo,
 			wantAction: "MOVE", wantType: "recovery", wantDistKm: 4, wantPace: easyPace, wantOptCNS: true,
 		},
 		{
-			name: "RED + already easy -> SOFTEN to half, easy pace",
+			name:  "RED + already easy -> SOFTEN to half, easy pace",
 			color: ColorRed, session: easy,
 			wantAction: "SOFTEN", wantType: "easy", wantDistKm: 4, wantPace: easyPace, wantOptCNS: true,
 		},
 		{
-			name: "RED + no run -> REST_DAY",
+			name:  "RED + no run -> REST_DAY",
 			color: ColorRed, session: nil,
 			wantAction: "REST_DAY", wantAdjNil: true,
 		},
 		{
-			name: "AMBER + quality -> SOFTEN to 75%, easy pace",
+			name:  "AMBER + quality -> SOFTEN to 75%, easy pace",
 			color: ColorAmber, session: tempo,
 			wantAction: "SOFTEN", wantType: "tempo", wantDistKm: 4.5, wantPace: easyPace, wantOptCNS: false,
 		},
 		{
-			name: "AMBER + easy -> STAND unchanged",
+			name:  "AMBER + easy -> STAND unchanged",
 			color: ColorAmber, session: easy,
 			wantAction: "STAND", wantType: "easy", wantDistKm: 8, wantPace: "6:00/km", wantOptCNS: false,
 		},
 		{
-			name: "AMBER + no run -> REST_DAY",
+			name:  "AMBER + no run -> REST_DAY",
 			color: ColorAmber, session: nil,
 			wantAction: "REST_DAY", wantAdjNil: true,
 		},
 		{
-			name: "GREEN + quality -> STAND unchanged",
+			name:  "GREEN + quality -> STAND unchanged",
 			color: ColorGreen, session: tempo,
 			wantAction: "STAND", wantType: "tempo", wantDistKm: 6, wantPace: "5:05/km", wantOptCNS: false,
 		},
 		{
-			name: "GREEN + no run -> REST_DAY",
+			name:  "GREEN + no run -> REST_DAY",
 			color: ColorGreen, session: nil,
 			wantAction: "REST_DAY", wantAdjNil: true,
 		},

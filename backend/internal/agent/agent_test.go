@@ -155,8 +155,8 @@ func TestRunDailyFallbackSource(t *testing.T) {
 	s := newAgentStore(t)
 	seedPlanWithToday(t, s, "2026-06-15", "2026-06-19")
 	adj := &fakeAdjuster{
-		dec:    llm.DailyDecisionParsed{Action: llm.ActionMove, AdjustedSession: &llm.PlanDay{Date: "2026-06-19", RunType: "recovery", DistanceKm: 4}, Rationale: "fb"},
-		raw:    "", source: "fallback",
+		dec: llm.DailyDecisionParsed{Action: llm.ActionMove, AdjustedSession: &llm.PlanDay{Date: "2026-06-19", RunType: "recovery", DistanceKm: 4}, Rationale: "fb"},
+		raw: "", source: "fallback",
 	}
 	a := New(s, &fakeSyncer{res: okSync()}, adj, &fakePusher{}, fakeClock{now: time.Date(2026, 6, 19, 5, 30, 0, 0, time.UTC)}, time.UTC)
 	res := a.RunDaily(context.Background(), "2026-06-19")
