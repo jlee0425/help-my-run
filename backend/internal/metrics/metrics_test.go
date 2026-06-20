@@ -253,3 +253,73 @@ func TestPaceEstimates(t *testing.T) {
 		}
 	})
 }
+
+func TestRecoveryTrend(t *testing.T) {
+	day := func(date string, hrv, sleep, charged, drained *int64) store.RecoveryDay {
+		rd := store.RecoveryDay{Date: date}
+		if hrv != nil {
+			rd.HRV = &store.HrvFields{LastNightAvgMs: hrv}
+		}
+		if sleep != nil {
+			rd.Sleep = &store.SleepFields{Score: sleep}
+		}
+		if charged != nil || drained != nil {
+			rd.BodyBattery = &store.BodyBatteryFields{Charged: charged, Drained: drained}
+		}
+		return rd
+	}
+	ip := func(v int64) *int64 { return &v }
+
+	t.Run("no data -> stable", func(t *testing.T) {
+		if got := recoveryTrend(nil); got != "stable" {
+			t.Errorf("recoveryTrend(nil) = %q, want stable", got)
+		}
+	})
+
+	t.Run("improving HRV and sleep", func(t *testing.T) {
+		rec := []store.RecoveryDay{
+			day("2026-06-22", ip(60), ip(85), ip(80), ip(40)), // recent
+			day("2026-06-21", ip(58), ip(84), ip(78), ip(42)),
+			day("2026-06-20", ip(59), ip(86), ip(82), ip(38)),
+			day("2026-06-19", ip(48), ip(72), ip(60), ip(55)), // older
+			day("2026-06-18", ip(47), ip(70), ip(58), ip(57)),
+			day("2026-06-17", ip(49), ip(71), ip(62), ip(53)),
+		}
+		if got := recoveryTrend(rec); got != "improving" {
+			t.Errorf("recoveryTrend = %q, want improving", got)
+		}
+	})
+
+	t.Run("declining", func(t *testing.T) {
+		rec := []store.RecoveryDay{
+			day("2026-06-22", ip(45), ip(65), ip(50), ip(60)), // recent (worse)
+			day("2026-06-21", ip(44), ip(64), ip(48), ip(62)),
+			day("2026-06-20", ip(46), ip(66), ip(52), ip(58)),
+			day("2026-06-19", ip(58), ip(82), ip(78), ip(40)), // older (better)
+			day("2026-06-18", ip(57), ip(81), ip(76), ip(42)),
+			day("2026-06-17", ip(59), ip(83), ip(80), ip(38)),
+		}
+		if got := recoveryTrend(rec); got != "declining" {
+			t.Errorf("recoveryTrend = %q, want declining", got)
+		}
+	})
+
+	t.Run("flat within deadband -> stable", func(t *testing.T) {
+		rec := []store.RecoveryDay{
+			day("2026-06-22", ip(50), ip(80), ip(70), ip(50)),
+			day("2026-06-21", ip(50), ip(80), ip(70), ip(50)),
+			day("2026-06-20", ip(50), ip(80), ip(70), ip(50)),
+			day("2026-06-19", ip(50), ip(80), ip(70), ip(50)),
+		}
+		if got := recoveryTrend(rec); got != "stable" {
+			t.Errorf("recoveryTrend = %q, want stable", got)
+		}
+	})
+
+	t.Run("single day -> stable (cannot split halves)", func(t *testing.T) {
+		rec := []store.RecoveryDay{day("2026-06-22", ip(50), ip(80), ip(70), ip(50))}
+		if got := recoveryTrend(rec); got != "stable" {
+			t.Errorf("recoveryTrend(1 day) = %q, want stable", got)
+		}
+	})
+}

@@ -156,3 +156,107 @@ func paceEstimates(acts []store.Activity, now time.Time) (string, string) {
 	}
 	return formatPace(easySec), formatPace(thrSec)
 }
+
+// recoveryDeadband is the relative change (fraction) below which a signal's
+// recent-vs-older difference is treated as flat.
+const recoveryDeadband = 0.03
+
+// avgPtr averages the non-nil int64 values; ok=false if none present.
+func avgPtr(vals []*int64) (float64, bool) {
+	var sum float64
+	var n int
+	for _, v := range vals {
+		if v != nil {
+			sum += float64(*v)
+			n++
+		}
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return sum / float64(n), true
+}
+
+// signalVote compares recent vs older averages and returns +1 (improving),
+// -1 (declining), or 0 (flat/absent). higherIsBetter inverts the polarity for
+// signals where a lower value is better.
+func signalVote(recent, older []*int64, higherIsBetter bool) int {
+	r, okR := avgPtr(recent)
+	o, okO := avgPtr(older)
+	if !okR || !okO || o == 0 {
+		return 0
+	}
+	change := (r - o) / o
+	if change > recoveryDeadband {
+		if higherIsBetter {
+			return 1
+		}
+		return -1
+	}
+	if change < -recoveryDeadband {
+		if higherIsBetter {
+			return -1
+		}
+		return 1
+	}
+	return 0
+}
+
+// recoveryTrend classifies the recent ~14-day recovery direction as
+// "improving" | "stable" | "declining" by majority vote across HRV
+// (last-night avg ms), sleep score, and Body Battery net (charged-drained).
+// recovery is most-recent-first (as ListRecovery returns). Needs >= 2 days.
+func recoveryTrend(recovery []store.RecoveryDay) string {
+	rows := recovery
+	if len(rows) > 14 {
+		rows = rows[:14]
+	}
+	if len(rows) < 2 {
+		return "stable"
+	}
+	half := len(rows) / 2
+	recent := rows[:half]
+	older := rows[half:]
+
+	collect := func(days []store.RecoveryDay, pick func(store.RecoveryDay) *int64) []*int64 {
+		out := make([]*int64, 0, len(days))
+		for _, d := range days {
+			out = append(out, pick(d))
+		}
+		return out
+	}
+
+	hrv := func(d store.RecoveryDay) *int64 {
+		if d.HRV == nil {
+			return nil
+		}
+		return d.HRV.LastNightAvgMs
+	}
+	sleep := func(d store.RecoveryDay) *int64 {
+		if d.Sleep == nil {
+			return nil
+		}
+		return d.Sleep.Score
+	}
+	bbNet := func(d store.RecoveryDay) *int64 {
+		if d.BodyBattery == nil || d.BodyBattery.Charged == nil || d.BodyBattery.Drained == nil {
+			return nil
+		}
+		net := *d.BodyBattery.Charged - *d.BodyBattery.Drained
+		return &net
+	}
+
+	score := 0
+	score += signalVote(collect(recent, hrv), collect(older, hrv), true)
+	score += signalVote(collect(recent, sleep), collect(older, sleep), true)
+	score += signalVote(collect(recent, bbNet), collect(older, bbNet), true)
+
+	switch {
+	case score > 0:
+		return "improving"
+	case score < 0:
+		return "declining"
+	default:
+		return "stable"
+	}
+}
