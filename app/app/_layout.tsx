@@ -8,6 +8,8 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{ title: 'help-my-run' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="plan" options={{ title: 'Plan my week' }} />
+        <Stack.Screen name="profile" options={{ title: 'Profile' }} />
       </Stack>
     </QueryClientProvider>
   );
