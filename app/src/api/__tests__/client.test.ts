@@ -161,6 +161,25 @@ describe('apiUpload', () => {
     expect(init.headers.Authorization).toBeUndefined();
   });
 
+  it('appends extra text form fields alongside the image', async () => {
+    mockFetchOnce({ ok: true, status: 200, json: { week_start: '2026-06-22', days: [] } });
+
+    await apiUpload(
+      '/api/crossfit/parse',
+      { uri: 'file:///c.jpg', name: 'c.jpg', type: 'image/jpeg' },
+      { fields: { week_start: '2026-06-22' } },
+    );
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    const form = init.body as FormData;
+    expect(form).toBeInstanceOf(FormData);
+    // The image field is preserved and the text field is appended.
+    expect(form.get('week_start')).toBe('2026-06-22');
+    expect(form.get('image')).not.toBeNull();
+    // Still no JSON Content-Type — RN must set the multipart boundary itself.
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+
   it('throws ApiError on non-ok response', async () => {
     mockFetchOnce({ ok: false, status: 502, json: { error: 'claude failed' } });
 

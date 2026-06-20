@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, FlatList, ScrollView, StyleSheet } from 'react-native';
 import { Link } from 'expo-router';
 import { useStatus, useActivities, useRecovery } from '../src/api/hooks';
+import { currentMonday } from '../src/lib/week';
 import type { Activity, RecoveryDay } from '../src/api/types';
 
 function fmtKm(distanceM: number): string {
@@ -42,6 +43,9 @@ export default function HomeScreen() {
       </Link>
       <Link href="/plan" style={styles.link}>
         Plan my week
+      </Link>
+      <Link href={`/plan-view?week=${currentMonday()}`} style={styles.link}>
+        This week's plan
       </Link>
       <Link href="/profile" style={styles.link}>
         Profile

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useParseCrossfit, useGeneratePlan } from '../src/api/hooks';
 import type { CrossFitWeek, CrossFitDay, Load } from '../src/api/types';
 import {
@@ -7,19 +8,24 @@ import {
   takePhoto,
   toUploadFile,
 } from '../src/lib/imagePicker';
+import { currentMonday, isValidWeekStart } from '../src/lib/week';
 import type { ImagePickerAsset } from 'expo-image-picker';
 
 const LOADS: Load[] = ['low', 'med', 'high'];
 
 export default function PlanScreen() {
+  const router = useRouter();
   const parse = useParseCrossfit();
   const generate = useGeneratePlan();
   const [week, setWeek] = useState<CrossFitWeek | null>(null);
+  const [weekStart, setWeekStart] = useState<string>(() => currentMonday());
+
+  const weekStartValid = isValidWeekStart(weekStart);
 
   const onPicked = async (asset: ImagePickerAsset | null) => {
     if (!asset) return;
     const file = toUploadFile(asset);
-    const parsed = await parse.mutateAsync(file);
+    const parsed = await parse.mutateAsync({ file, weekStart });
     setWeek(parsed);
   };
 
@@ -30,10 +36,26 @@ export default function PlanScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <Text style={styles.label}>Week start (Monday, YYYY-MM-DD)</Text>
+      <TextInput
+        testID="input-week-start"
+        style={[styles.input, !weekStartValid && styles.inputError]}
+        value={weekStart}
+        onChangeText={setWeekStart}
+        autoCapitalize="none"
+        autoCorrect={false}
+        placeholder="YYYY-MM-DD"
+      />
+      {!weekStartValid ? (
+        <Text testID="week-start-error" style={styles.errorLine}>
+          Enter a valid date as YYYY-MM-DD.
+        </Text>
+      ) : null}
+
       <Pressable
         testID="btn-pick-photo"
-        style={styles.button}
-        disabled={parse.isPending}
+        style={[styles.button, (parse.isPending || !weekStartValid) && styles.buttonDisabled]}
+        disabled={parse.isPending || !weekStartValid}
         onPress={async () => onPicked(await pickFromLibrary())}
       >
         <Text style={styles.buttonText}>
@@ -42,8 +64,8 @@ export default function PlanScreen() {
       </Pressable>
       <Pressable
         testID="btn-take-photo"
-        style={styles.button}
-        disabled={parse.isPending}
+        style={[styles.button, (parse.isPending || !weekStartValid) && styles.buttonDisabled]}
+        disabled={parse.isPending || !weekStartValid}
         onPress={async () => onPicked(await takePhoto())}
       >
         <Text style={styles.buttonText}>Take photo</Text>
@@ -111,9 +133,17 @@ export default function PlanScreen() {
       {week ? (
         <Pressable
           testID="btn-generate"
-          style={styles.button}
+          style={[styles.button, generate.isPending && styles.buttonDisabled]}
           disabled={generate.isPending}
-          onPress={() => generate.mutate({ week_start: week.week_start, crossfit_week: week })}
+          onPress={() =>
+            generate.mutate(
+              { week_start: weekStart, crossfit_week: week },
+              {
+                onSuccess: (plan) =>
+                  router.push(`/plan-view?week=${plan.week_start}`),
+              },
+            )
+          }
         >
           <Text style={styles.buttonText}>
             {generate.isPending ? 'Generating…' : 'Generate plan'}
@@ -144,6 +174,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
   },
+  inputError: { borderColor: '#c0392b' },
+  errorLine: { color: '#c0392b', fontSize: 14 },
   button: {
     backgroundColor: '#fc4c02',
     borderRadius: 8,
@@ -151,6 +183,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 8,
   },
+  buttonDisabled: { opacity: 0.5 },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   card: {
     borderWidth: 1,
