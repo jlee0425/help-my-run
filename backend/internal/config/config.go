@@ -25,7 +25,12 @@ type Config struct {
 	PythonBin    string `envconfig:"PYTHON_BIN" default:"garmin-worker/.venv/bin/python"`
 	WorkerScript string `envconfig:"WORKER_SCRIPT" default:"garmin-worker/worker.py"`
 
-	AnthropicAPIKey string `envconfig:"ANTHROPIC_API_KEY"` // stub until M1
+	// M1: Claude Code headless + image storage.
+	ClaudeBin   string `envconfig:"CLAUDE_BIN" default:"claude"`
+	ClaudeModel string `envconfig:"CLAUDE_MODEL" default:"claude-opus-4-8"`
+	ImageDir    string `envconfig:"IMAGE_DIR" default:"./data/crossfit"`
+
+	AnthropicAPIKey string `envconfig:"ANTHROPIC_API_KEY"` // stub (subscription path; unused)
 }
 
 // Load reads .env (if present) into the process environment, then maps env
