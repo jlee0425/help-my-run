@@ -376,3 +376,58 @@ func TestUpsertGarminAndListRecovery(t *testing.T) {
 		t.Errorf("ListRecovery(1) = %v, want single [2026-06-18]", one)
 	}
 }
+
+func TestM1MigrationCreatesTables(t *testing.T) {
+	s := newTestStore(t)
+
+	wantTables := []string{"athlete_profile", "crossfit_weeks", "plans"}
+	for _, tbl := range wantTables {
+		var name string
+		err := s.DB.QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, tbl,
+		).Scan(&name)
+		if err != nil {
+			t.Errorf("table %q not found after migrate: %v", tbl, err)
+		}
+	}
+
+	// plans index present.
+	var idx string
+	if err := s.DB.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_plans_week_start'`,
+	).Scan(&idx); err != nil {
+		t.Errorf("idx_plans_week_start not found: %v", err)
+	}
+}
+
+func TestM1MigrationSeedsProfile(t *testing.T) {
+	s := newTestStore(t)
+
+	var n int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM athlete_profile`).Scan(&n); err != nil {
+		t.Fatalf("count athlete_profile: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("athlete_profile row count = %d, want 1 (seeded single row)", n)
+	}
+
+	var id int
+	var target float64
+	var mode, constraints, goal string
+	if err := s.DB.QueryRow(
+		`SELECT id, target_weekly_km, progression_mode, run_constraints_json, goal_text
+		 FROM athlete_profile WHERE id = 1`,
+	).Scan(&id, &target, &mode, &constraints, &goal); err != nil {
+		t.Fatalf("scan seeded profile: %v", err)
+	}
+	if id != 1 || target != 20 || mode != "build" || constraints != "{}" || goal != "" {
+		t.Errorf("seed = id %d target %v mode %q constraints %q goal %q, want 1/20/build/{}/empty",
+			id, target, mode, constraints, goal)
+	}
+
+	// CHECK (id = 1) rejects a second row.
+	_, err := s.DB.Exec(`INSERT INTO athlete_profile (id, updated_at) VALUES (2, 'x')`)
+	if err == nil {
+		t.Error("inserting id=2 succeeded, want CHECK (id = 1) violation")
+	}
+}
