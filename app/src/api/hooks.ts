@@ -15,6 +15,9 @@ import type {
   Fitness,
   CrossFitWeek,
   Plan,
+  TodayBriefing,
+  RunResult,
+  PushRegisterRequest,
 } from './types';
 
 export function useStatus() {
@@ -125,5 +128,39 @@ export function useGeneratePlan() {
       queryClient.invalidateQueries({ queryKey: ['plan', plan.week_start] });
       queryClient.invalidateQueries({ queryKey: ['fitness'] });
     },
+  });
+}
+
+export function useToday() {
+  return useQuery({
+    queryKey: ['today'],
+    queryFn: () => apiGet<TodayBriefing>('/api/today'),
+  });
+}
+
+export function useUndoToday() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<TodayBriefing>('/api/today/undo'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['today'] });
+    },
+  });
+}
+
+export function useRunAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<RunResult>('/api/agent/run'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['today'] });
+    },
+  });
+}
+
+export function useRegisterPushToken() {
+  return useMutation({
+    mutationFn: (body: PushRegisterRequest) =>
+      apiPost<PushRegisterRequest>('/api/push/register', body),
   });
 }

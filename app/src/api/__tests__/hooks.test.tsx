@@ -21,6 +21,10 @@ import {
   usePlan,
   useParseCrossfit,
   useGeneratePlan,
+  useToday,
+  useUndoToday,
+  useRunAgent,
+  useRegisterPushToken,
 } from '../hooks';
 import type {
   Status,
@@ -31,6 +35,9 @@ import type {
   Fitness,
   CrossFitWeek,
   Plan,
+  TodayBriefing,
+  RunResult,
+  PushRegisterRequest,
 } from '../types';
 
 const mockApiGet = apiGet as jest.MockedFunction<typeof apiGet>;
@@ -236,5 +243,74 @@ describe('useGeneratePlan', () => {
       week_start: '2026-06-22', crossfit_week: week,
     });
     expect(result.current.data).toEqual(plan);
+  });
+});
+
+const todayBriefing: TodayBriefing = {
+  date: '2026-06-20',
+  readiness_color: 'amber',
+  drivers: {
+    date: '2026-06-20',
+    sleep_hours: 6.1, sleep_score: 62,
+    hrv_last_night_ms: 48, hrv_baseline_ms: 58.4, hrv_delta_pct: -17.8,
+    rhr_last_night: 54, rhr_baseline: 50.2, rhr_delta_bpm: 3.8,
+    body_battery_high: 61, recovery_trend: 'declining', data_complete: true,
+  },
+  reasons: ['HRV -17.8% vs baseline'],
+  action: 'SOFTEN',
+  original_session: null,
+  effective_session: null,
+  rationale: 'Trimmed.',
+  source: 'ai',
+  stale: false,
+};
+
+describe('useToday', () => {
+  it('fetches /api/today', async () => {
+    mockApiGet.mockResolvedValue(todayBriefing);
+    const { result } = await renderHook(() => useToday(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/today');
+    expect(result.current.data).toEqual(todayBriefing);
+  });
+});
+
+describe('useUndoToday', () => {
+  it('POSTs /api/today/undo and returns the reverted briefing', async () => {
+    const reverted: TodayBriefing = { ...todayBriefing, action: 'STAND' };
+    mockApiPost.mockResolvedValue(reverted);
+    const { result } = await renderHook(() => useUndoToday(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate(); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPost).toHaveBeenCalledWith('/api/today/undo');
+    expect(result.current.data).toEqual(reverted);
+  });
+});
+
+describe('useRunAgent', () => {
+  it('POSTs /api/agent/run and returns the run result', async () => {
+    const runResult: RunResult = {
+      date: '2026-06-20', skipped: false, readiness_color: 'amber',
+      action: 'SOFTEN', source: 'ai', stale: false, pushed: true, error: null,
+    };
+    mockApiPost.mockResolvedValue(runResult);
+    const { result } = await renderHook(() => useRunAgent(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate(); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPost).toHaveBeenCalledWith('/api/agent/run');
+    expect(result.current.data).toEqual(runResult);
+  });
+});
+
+describe('useRegisterPushToken', () => {
+  it('POSTs /api/push/register with the token + platform body', async () => {
+    const body: PushRegisterRequest = {
+      expo_push_token: 'ExponentPushToken[abc]', platform: 'ios',
+    };
+    mockApiPost.mockResolvedValue(body);
+    const { result } = await renderHook(() => useRegisterPushToken(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate(body); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPost).toHaveBeenCalledWith('/api/push/register', body);
   });
 });
