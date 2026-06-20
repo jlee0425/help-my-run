@@ -36,7 +36,14 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "help-my-run accesses your photos so you can upload your CrossFit schedule.",
+          "cameraPermission": "help-my-run uses the camera so you can photograph your CrossFit schedule."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
