@@ -45,3 +45,45 @@ export interface RecoveryDay {
   rhr: { resting_hr: number | null } | null;
 }
 export interface RecoveryResponse { recovery: RecoveryDay[]; }
+
+// --- M1 types (snake_case wire JSON) ---
+
+export type Load = 'low' | 'med' | 'high';
+
+export interface CrossFitDay {
+  date: string; dow: string; has_crossfit: boolean;
+  focus: string; cns_load: Load; leg_load: Load; notes: string;
+}
+export interface CrossFitWeek { week_start: string; days: CrossFitDay[]; }
+
+export interface PlanDay {
+  date: string; dow: string; run_type: string; distance_km: number;
+  pace_target: string; time_note: string; optional_if_cns: boolean; rationale: string;
+}
+export interface Plan {
+  id?: number; week_start: string; generated_at?: string;
+  fitness_summary: string; weekly_target_km: number;
+  days: PlanDay[]; week_rationale: string; one_flag: string;
+}
+
+export interface AthleteProfile {
+  target_weekly_km: number;
+  progression_mode: 'build' | 'hold';
+  zone2_ceiling_bpm: number | null;
+  threshold_bpm: number | null;
+  max_hr_bpm: number | null;
+  run_constraints_json: string;
+  goal_text: string;
+  updated_at?: string;
+}
+
+export interface Fitness {
+  weekly_volume_km: number;
+  four_week_avg_km: number;
+  acute_chronic_ratio: number;
+  easy_pace: string;
+  threshold_pace: string;
+  recovery_trend: string;
+  safe_weekly_target_km: number;
+  is_cutback_week: boolean;
+}
