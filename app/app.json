@@ -43,8 +43,20 @@
           "photosPermission": "help-my-run accesses your photos so you can upload your CrossFit schedule.",
           "cameraPermission": "help-my-run uses the camera so you can photograph your CrossFit schedule."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#fc4c02"
+        }
       ]
     ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
