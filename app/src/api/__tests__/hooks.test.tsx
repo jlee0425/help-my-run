@@ -5,14 +5,38 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 jest.mock('../client', () => ({
   apiGet: jest.fn(),
   apiPost: jest.fn(),
+  apiPut: jest.fn(),
+  apiUpload: jest.fn(),
 }));
 
-import { apiGet, apiPost } from '../client';
-import { useStatus, useActivities, useRecovery, useSync } from '../hooks';
-import type { Status, ActivitiesResponse, RecoveryResponse, SyncResponse } from '../types';
+import { apiGet, apiPost, apiPut, apiUpload } from '../client';
+import {
+  useStatus,
+  useActivities,
+  useRecovery,
+  useSync,
+  useProfile,
+  useUpdateProfile,
+  useFitness,
+  usePlan,
+  useParseCrossfit,
+  useGeneratePlan,
+} from '../hooks';
+import type {
+  Status,
+  ActivitiesResponse,
+  RecoveryResponse,
+  SyncResponse,
+  AthleteProfile,
+  Fitness,
+  CrossFitWeek,
+  Plan,
+} from '../types';
 
 const mockApiGet = apiGet as jest.MockedFunction<typeof apiGet>;
 const mockApiPost = apiPost as jest.MockedFunction<typeof apiPost>;
+const mockApiPut = apiPut as jest.MockedFunction<typeof apiPut>;
+const mockApiUpload = apiUpload as jest.MockedFunction<typeof apiUpload>;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -98,12 +122,114 @@ describe('useSync', () => {
 
     const { result } = await renderHook(() => useSync(), { wrapper: createWrapper() });
 
-    act(() => {
+    await act(async () => {
       result.current.mutate();
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockApiPost).toHaveBeenCalledWith('/api/sync');
     expect(result.current.data).toEqual(data);
+  });
+});
+
+describe('useProfile', () => {
+  it('fetches /api/profile', async () => {
+    const data: AthleteProfile = {
+      target_weekly_km: 20, progression_mode: 'build',
+      zone2_ceiling_bpm: null, threshold_bpm: null, max_hr_bpm: null,
+      run_constraints_json: '{}', goal_text: 'Build cardio', updated_at: '2026-06-20T08:00:00Z',
+    };
+    mockApiGet.mockResolvedValue(data);
+    const { result } = await renderHook(() => useProfile(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/profile');
+    expect(result.current.data).toEqual(data);
+  });
+});
+
+describe('useUpdateProfile', () => {
+  it('PUTs /api/profile with the profile body', async () => {
+    const profile: AthleteProfile = {
+      target_weekly_km: 25, progression_mode: 'hold',
+      zone2_ceiling_bpm: 150, threshold_bpm: 168, max_hr_bpm: 190,
+      run_constraints_json: '{}', goal_text: 'Hold steady',
+    };
+    mockApiPut.mockResolvedValue(profile);
+    const { result } = await renderHook(() => useUpdateProfile(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate(profile); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPut).toHaveBeenCalledWith('/api/profile', profile);
+    expect(result.current.data).toEqual(profile);
+  });
+});
+
+describe('useFitness', () => {
+  it('fetches /api/fitness', async () => {
+    const data: Fitness = {
+      weekly_volume_km: 18.2, four_week_avg_km: 17.4, acute_chronic_ratio: 1.05,
+      easy_pace: '6:00/km', threshold_pace: '5:05/km', recovery_trend: 'improving',
+      safe_weekly_target_km: 20, is_cutback_week: false,
+    };
+    mockApiGet.mockResolvedValue(data);
+    const { result } = await renderHook(() => useFitness(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/fitness');
+    expect(result.current.data).toEqual(data);
+  });
+});
+
+describe('usePlan', () => {
+  it('fetches /api/plan with the week query param', async () => {
+    const data: Plan = {
+      week_start: '2026-06-22', fitness_summary: 's', weekly_target_km: 20,
+      days: [], week_rationale: 'r', one_flag: 'f',
+    };
+    mockApiGet.mockResolvedValue(data);
+    const { result } = await renderHook(() => usePlan('2026-06-22'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/plan?week=2026-06-22');
+    expect(result.current.data).toEqual(data);
+  });
+
+  it('is disabled (does not fetch) when week is empty', async () => {
+    const { result } = await renderHook(() => usePlan(''), { wrapper: createWrapper() });
+    expect(result.current.fetchStatus).toBe('idle');
+    expect(mockApiGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('useParseCrossfit', () => {
+  it('uploads the image and returns the parsed week', async () => {
+    const week: CrossFitWeek = { week_start: '2026-06-22', days: [] };
+    mockApiUpload.mockResolvedValue(week);
+    const { result } = await renderHook(() => useParseCrossfit(), { wrapper: createWrapper() });
+    await act(async () => {
+      result.current.mutate({ uri: 'file:///x.jpg', name: 'x.jpg', type: 'image/jpeg' });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiUpload).toHaveBeenCalledWith('/api/crossfit/parse', {
+      uri: 'file:///x.jpg', name: 'x.jpg', type: 'image/jpeg',
+    });
+    expect(result.current.data).toEqual(week);
+  });
+});
+
+describe('useGeneratePlan', () => {
+  it('POSTs /api/plan/generate with week_start + crossfit_week', async () => {
+    const week: CrossFitWeek = { week_start: '2026-06-22', days: [] };
+    const plan: Plan = {
+      id: 7, week_start: '2026-06-22', generated_at: '2026-06-20T08:05:12Z',
+      fitness_summary: 's', weekly_target_km: 20, days: [], week_rationale: 'r', one_flag: 'f',
+    };
+    mockApiPost.mockResolvedValue(plan);
+    const { result } = await renderHook(() => useGeneratePlan(), { wrapper: createWrapper() });
+    await act(async () => {
+      result.current.mutate({ week_start: '2026-06-22', crossfit_week: week });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPost).toHaveBeenCalledWith('/api/plan/generate', {
+      week_start: '2026-06-22', crossfit_week: week,
+    });
+    expect(result.current.data).toEqual(plan);
   });
 });

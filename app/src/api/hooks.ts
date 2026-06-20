@@ -4,13 +4,17 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
-import { apiGet, apiPost } from './client';
+import { apiGet, apiPost, apiPut, apiUpload } from './client';
 import type {
   Status,
   ActivitiesResponse,
   RecoveryResponse,
   SyncResponse,
   ConnectResponse,
+  AthleteProfile,
+  Fitness,
+  CrossFitWeek,
+  Plan,
 } from './types';
 
 export function useStatus() {
@@ -61,6 +65,61 @@ export function useConnectStrava() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['status'] });
+    },
+  });
+}
+
+export function useProfile() {
+  return useQuery({
+    queryKey: ['profile'],
+    queryFn: () => apiGet<AthleteProfile>('/api/profile'),
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (profile: AthleteProfile) => apiPut<AthleteProfile>('/api/profile', profile),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+    },
+  });
+}
+
+export function useFitness() {
+  return useQuery({
+    queryKey: ['fitness'],
+    queryFn: () => apiGet<Fitness>('/api/fitness'),
+  });
+}
+
+export function usePlan(week: string) {
+  return useQuery({
+    queryKey: ['plan', week],
+    queryFn: () => apiGet<Plan>(`/api/plan?week=${week}`),
+    enabled: !!week,
+  });
+}
+
+export function useParseCrossfit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: { uri: string; name: string; type: string }) =>
+      apiUpload<CrossFitWeek>('/api/crossfit/parse', file),
+    onSuccess: (week) => {
+      queryClient.invalidateQueries({ queryKey: ['crossfit', week.week_start] });
+    },
+  });
+}
+
+export function useGeneratePlan() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { week_start: string; crossfit_week?: CrossFitWeek }) =>
+      apiPost<Plan>('/api/plan/generate', body),
+    onSuccess: (plan) => {
+      queryClient.invalidateQueries({ queryKey: ['plan', plan.week_start] });
+      queryClient.invalidateQueries({ queryKey: ['fitness'] });
     },
   });
 }
