@@ -35,6 +35,8 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 		},
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),
+		Agent:    &fakeAgent{},
+		Pusher:   &fakePusher{},
 	}
 	return NewRouter(deps), s
 }
@@ -207,7 +209,7 @@ func TestRecoveryHandler(t *testing.T) {
 	}
 }
 
-func sp(v string) *string  { return &v }
+func sp(v string) *string   { return &v }
 func fp(v float64) *float64 { return &v }
 
 func TestStravaCallbackExchangesAndPersists(t *testing.T) {
@@ -237,7 +239,9 @@ func TestStravaCallbackExchangesAndPersists(t *testing.T) {
 		Store:    s,
 		Strava:   strava.NewWithBase("12345", "secret", "http://localhost:8080/api/strava/callback", srv.URL),
 		APIToken: testToken,
-		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) { return "ok", 0, nil, "ok", 0, nil },
+		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
+			return "ok", 0, nil, "ok", 0, nil
+		},
 	}
 	h := NewRouter(deps)
 

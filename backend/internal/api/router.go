@@ -8,8 +8,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
+	"help-my-run/backend/internal/push"
+	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
 )
@@ -21,11 +24,24 @@ import (
 type SyncFunc func(ctx context.Context) (string, int, *string, string, int, *string)
 
 // Coach is the M1 plan-engine seam, injected from main.go (avoids an import
-// cycle: api must not import coach). *coach.Coach satisfies it structurally.
+// cycle: api must not import coach). Extended in M2 with AdjustToday.
+// *coach.Coach satisfies it structurally.
 type Coach interface {
 	ParseCrossFit(ctx context.Context, weekStart, imagePath string) (llm.CrossFitWeekParsed, string, error)
 	GeneratePlan(ctx context.Context, weekStart string, edited *llm.CrossFitWeekParsed) (llm.PlanParsed, string, string, error)
 	Fitness(ctx context.Context) (metrics.FitnessMetrics, error)
+	AdjustToday(ctx context.Context, date string, rd readiness.Readiness, today *llm.PlanDay) (llm.DailyDecisionParsed, string, string, error)
+}
+
+// Agent is the M2 daily-loop seam. *agent.Agent satisfies it structurally (after
+// the force-capable RunDaily is wired — see Task 26).
+type Agent interface {
+	RunDaily(ctx context.Context, localDate string, force bool) agent.RunResult
+}
+
+// Pusher is the M2 push transport seam. *push.Client satisfies it structurally.
+type Pusher interface {
+	Send(ctx context.Context, msg push.Message) error
 }
 
 // Deps are the handler dependencies injected by main.go (and tests).
@@ -36,6 +52,8 @@ type Deps struct {
 	SyncFunc SyncFunc
 	Coach    Coach  // M1
 	ImageDir string // M1: where uploaded CrossFit images are saved
+	Agent    Agent  // M2: daily loop (POST /api/agent/run)
+	Pusher   Pusher // M2: push transport
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.
@@ -68,6 +86,12 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/plan/generate", h.planGenerate)
 		r.Get("/api/plan", h.plan)
 		r.Get("/api/fitness", h.fitness)
+
+		// M2
+		r.Post("/api/push/register", h.pushRegister)
+		r.Get("/api/today", h.today)
+		r.Post("/api/today/undo", h.undoToday)
+		r.Post("/api/agent/run", h.agentRun)
 	})
 
 	return r
