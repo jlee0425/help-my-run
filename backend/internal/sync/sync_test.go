@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -221,6 +222,58 @@ func TestSyncAllPartialFailure(t *testing.T) {
 	if out.Garmin.Status != "error" || out.Garmin.Error == nil {
 		t.Errorf("garmin = %+v, want error", out.Garmin)
 	}
+}
+
+func TestSyncStravaCursorFromLatestActivity(t *testing.T) {
+	var gotAfter string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/oauth/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"token_type":"Bearer","access_token":"acc","refresh_token":"ref","expires_at":4102444800,"expires_in":21600,"scope":"activity:read_all"}`))
+		case strings.Contains(r.URL.Path, "/athlete/activities"):
+			gotAfter = r.URL.Query().Get("after")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	s, err := store.Open(filepath.Join(t.TempDir(), "cur.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.Migrate(); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	_ = s.SaveStravaTokens(store.StravaTokens{AccessToken: "acc", RefreshToken: "ref", ExpiresAt: 4102444800})
+	_ = s.UpsertActivity(store.Activity{
+		StravaID: 1, Type: "Run", Name: "r", StartTime: "2026-06-18T18:00:00Z",
+		DistanceM: 8000, MovingTimeS: 2400, ElapsedTimeS: 2400, RawJSON: "{}",
+	})
+
+	client := strava.NewWithBase("1", "x", "http://cb", srv.URL)
+	res := SyncStrava(context.Background(), s, client)
+	if res.Status != "ok" {
+		t.Fatalf("sync status = %q (err=%v), want ok", res.Status, res.Error)
+	}
+
+	wantUnix := mustUnix(t, "2026-06-18T18:00:00Z")
+	if gotAfter != wantUnix {
+		t.Errorf("after = %q, want %q (latest stored activity start_time)", gotAfter, wantUnix)
+	}
+}
+
+func mustUnix(t *testing.T, rfc string) string {
+	t.Helper()
+	ts, err := time.Parse(time.RFC3339, rfc)
+	if err != nil {
+		t.Fatalf("parse %q: %v", rfc, err)
+	}
+	return strconv.FormatInt(ts.Unix(), 10)
 }
 
 func TestRunTickerCallsAndStops(t *testing.T) {

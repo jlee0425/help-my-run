@@ -81,10 +81,11 @@ func SyncStrava(ctx context.Context, s *store.Store, client *strava.Client) Sour
 		}
 	}
 
-	// Incremental window: since last successful sync, else ~30-day backfill.
+	// Incremental window: since the latest stored activity start_time, else a
+	// ~30-day backfill on a fresh DB.
 	after := time.Now().AddDate(0, 0, -30).Unix()
-	if sl, err := s.GetSyncLog(source); err == nil && sl.LastSyncedAt != nil {
-		if ts, perr := time.Parse(time.RFC3339, *sl.LastSyncedAt); perr == nil {
+	if latest, err := s.LatestActivityStartTime(); err == nil {
+		if ts, perr := time.Parse(time.RFC3339, latest); perr == nil {
 			after = ts.Unix()
 		}
 	}
