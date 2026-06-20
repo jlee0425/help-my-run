@@ -5,6 +5,7 @@ package coach
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"time"
 
 	"help-my-run/backend/internal/llm"
@@ -193,4 +194,116 @@ func (c *Coach) buildContextPack(ctx context.Context, weekStart string, edited *
 		CrossFitWeek: week,
 		LastWeekPlan: last,
 	}, nil
+}
+
+// dailyAdjustArgs builds the claude -p argv for the daily-adjust (Coach Brain) call.
+func (c *Coach) dailyAdjustArgs() []string {
+	return []string{
+		"-p", dailyAdjustPrompt,
+		"--model", c.model,
+		"--output-format", "json",
+		"--allowedTools", "",
+		"--no-session-persistence",
+	}
+}
+
+// AdjustToday runs the daily-adjust claude -p call. By the llm.Call error
+// contract, Call returns ONLY *llm.CallError (classified model/process failure) or
+// llm.ErrMalformedJSON (unparseable output, post-retry) — i.e. every non-nil error
+// here is a model failure, so any such error triggers the deterministic fallback
+// rule (§2 table via readiness.Fallback). Errors from the pre-call setup (Fitness,
+// GetAthleteProfile, input marshal) are NOT model failures and are returned to the
+// caller. Returns the parsed decision, the raw re-marshaled JSON (empty on
+// fallback), the source ("ai"|"fallback"), and an error only for those setup issues.
+func (c *Coach) AdjustToday(ctx context.Context, date string, rd readiness.Readiness, today *llm.PlanDay) (llm.DailyDecisionParsed, string, string, error) {
+	fit, err := c.Fitness(ctx)
+	if err != nil {
+		return llm.DailyDecisionParsed{}, "", "", err
+	}
+	prof, err := c.store.GetAthleteProfile()
+	if err != nil {
+		return llm.DailyDecisionParsed{}, "", "", err
+	}
+	rc := json.RawMessage(prof.RunConstraintsJSON)
+	if len(rc) == 0 || !json.Valid(rc) {
+		rc = json.RawMessage(`{}`)
+	}
+	pp := ProfilePack{
+		TargetWeeklyKm:  prof.TargetWeeklyKm,
+		ProgressionMode: prof.ProgressionMode,
+		Zone2CeilingBpm: prof.Zone2CeilingBpm,
+		ThresholdBpm:    prof.ThresholdBpm,
+		MaxHRBpm:        prof.MaxHRBpm,
+		RunConstraints:  rc,
+		GoalText:        prof.GoalText,
+	}
+
+	in := buildDailyAdjustInput(date, rd, today, fit, pp, nil, "")
+	inputJSON, err := json.Marshal(in)
+	if err != nil {
+		return llm.DailyDecisionParsed{}, "", "", err
+	}
+
+	var decision llm.DailyDecisionParsed
+	// llm.Call only returns *llm.CallError or llm.ErrMalformedJSON, both of which are
+	// model failures, so any non-nil error here -> deterministic fallback.
+	if cerr := c.llm.Call(ctx, c.dailyAdjustArgs(), string(inputJSON), &decision); cerr != nil {
+		log.Printf("coach.AdjustToday: claude failed (%v); using deterministic fallback", cerr)
+		fb := fallbackDecision(date, rd, today, fit)
+		return fb, "", "fallback", nil
+	}
+	raw, _ := json.Marshal(decision)
+	return decision, string(raw), "ai", nil
+}
+
+// planDayToFallbackSession converts a *llm.PlanDay into the readiness package's
+// llm-free FallbackSession (nil today -> nil session, i.e. no run). `date` forces
+// the local date onto the session (the coach always stamps today's date).
+func planDayToFallbackSession(date string, today *llm.PlanDay) *readiness.FallbackSession {
+	if today == nil {
+		return nil
+	}
+	return &readiness.FallbackSession{
+		Date:          date,
+		Dow:           today.Dow,
+		RunType:       today.RunType,
+		DistanceKm:    today.DistanceKm,
+		PaceTarget:    today.PaceTarget,
+		TimeNote:      today.TimeNote,
+		OptionalIfCNS: today.OptionalIfCNS,
+		Rationale:     today.Rationale,
+	}
+}
+
+// fallbackSessionToPlanDay converts a readiness.FallbackSession back into a
+// *llm.PlanDay (nil -> nil for REST_DAY).
+func fallbackSessionToPlanDay(fs *readiness.FallbackSession) *llm.PlanDay {
+	if fs == nil {
+		return nil
+	}
+	return &llm.PlanDay{
+		Date:          fs.Date,
+		Dow:           fs.Dow,
+		RunType:       fs.RunType,
+		DistanceKm:    fs.DistanceKm,
+		PaceTarget:    fs.PaceTarget,
+		TimeNote:      fs.TimeNote,
+		OptionalIfCNS: fs.OptionalIfCNS,
+		Rationale:     fs.Rationale,
+	}
+}
+
+// fallbackDecision is the deterministic readiness->action rule applied when the
+// claude -p daily-adjust call fails. It DELEGATES to readiness.Fallback (the
+// single source of truth for the §2 rule table, roundHalf capping, and rationale
+// strings) so the shipped fallback path is exactly what the Task 8/9 readiness
+// tests cover. No rule logic lives here — only the *llm.PlanDay <-> FallbackSession
+// conversion.
+func fallbackDecision(date string, rd readiness.Readiness, today *llm.PlanDay, fit metrics.FitnessMetrics) llm.DailyDecisionParsed {
+	dec := readiness.Fallback(rd.Color, planDayToFallbackSession(date, today), fit.EasyPace)
+	return llm.DailyDecisionParsed{
+		Action:          llm.DailyAction(dec.Action),
+		AdjustedSession: fallbackSessionToPlanDay(dec.Adjusted),
+		Rationale:       dec.Rationale,
+	}
 }
