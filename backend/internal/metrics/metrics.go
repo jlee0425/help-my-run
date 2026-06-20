@@ -260,3 +260,47 @@ func recoveryTrend(recovery []store.RecoveryDay) string {
 		return "stable"
 	}
 }
+
+// cutbackEpoch is an anchor Monday used to index weeks for the cutback cadence.
+var cutbackEpoch = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
+
+// weekIndexSince returns the number of whole 7-day weeks from cutbackEpoch to t.
+func weekIndexSince(t time.Time) int {
+	days := int(t.UTC().Sub(cutbackEpoch).Hours() / 24)
+	return days / 7
+}
+
+// isCutbackWeek reports whether the week containing `now` is a cutback week
+// (every 4th week: weekIndex % 4 == 3).
+func isCutbackWeek(now time.Time) bool {
+	return weekIndexSince(now)%4 == 3
+}
+
+// round1 rounds to 1 decimal place.
+func round1(v float64) float64 { return math.Round(v*10) / 10 }
+
+// safeWeeklyTarget computes the next-week volume target from a baseline (recent
+// run km) and the athlete profile. Cutback weeks pull back to 80% of baseline.
+// "build" mode ramps +10% (capped at 1.5× the profile's stated target, floored
+// at baseline); "hold" holds baseline. With no history (baseline <= 0) it falls
+// back to the profile's stated target. Rounded to 1 decimal.
+func safeWeeklyTarget(baseline float64, profile store.AthleteProfile, cutback bool) float64 {
+	if baseline <= 0 {
+		baseline = profile.TargetWeeklyKm
+	}
+	if cutback {
+		return round1(baseline * 0.80)
+	}
+	if profile.ProgressionMode == "hold" {
+		return round1(baseline)
+	}
+	// "build" (default): +10% ramp, capped at 1.5× stated target, floored at baseline.
+	target := baseline * 1.10
+	if cap := profile.TargetWeeklyKm * 1.5; cap > 0 && target > cap {
+		target = cap
+	}
+	if target < baseline {
+		target = baseline
+	}
+	return round1(target)
+}
