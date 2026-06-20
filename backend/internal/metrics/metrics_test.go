@@ -163,3 +163,45 @@ func TestFourWeekAvgKm(t *testing.T) {
 		t.Errorf("fourWeekAvgKm = %v, want 8.0", got)
 	}
 }
+
+func TestAcuteChronicRatio(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z")
+	tests := []struct {
+		name string
+		acts []store.Activity
+		want float64
+	}{
+		{
+			name: "balanced ~1.05",
+			acts: []store.Activity{
+				{Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
+				{Type: "Run", StartTime: "2026-06-17T06:00:00Z", DistanceM: 8000},
+				{Type: "Run", StartTime: "2026-06-13T06:00:00Z", DistanceM: 17400},
+				{Type: "Run", StartTime: "2026-06-06T06:00:00Z", DistanceM: 17000},
+				{Type: "Run", StartTime: "2026-05-30T06:00:00Z", DistanceM: 16000},
+			},
+			// acute=18; 28d total=68.4; chronic=17.1; 18/17.1=1.0526 -> 1.05.
+			want: 1.05,
+		},
+		{
+			name: "no chronic baseline -> 0",
+			acts: nil,
+			want: 0,
+		},
+		{
+			name: "spike 2.0",
+			acts: []store.Activity{
+				{Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 20000},
+				{Type: "Run", StartTime: "2026-06-05T06:00:00Z", DistanceM: 20000},
+			},
+			want: 2.0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := acuteChronicRatio(tt.acts, now); got != tt.want {
+				t.Errorf("acuteChronicRatio = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

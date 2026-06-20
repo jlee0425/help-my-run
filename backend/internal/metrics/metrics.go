@@ -85,3 +85,18 @@ func fourWeekAvgKm(acts []store.Activity, now time.Time) float64 {
 	total := distanceKmInWindow(acts, now.AddDate(0, 0, -28), now)
 	return total / 4.0
 }
+
+// round2 rounds to 2 decimal places.
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+// acuteChronicRatio is the 7-day load divided by the 28-day mean weekly load,
+// both using run km as the load proxy. Returns 0 when there is no chronic
+// baseline (28-day load is 0). Balanced is roughly 0.8–1.3.
+func acuteChronicRatio(acts []store.Activity, now time.Time) float64 {
+	acute := distanceKmInWindow(acts, now.AddDate(0, 0, -7), now)
+	chronic := distanceKmInWindow(acts, now.AddDate(0, 0, -28), now) / 4.0
+	if chronic == 0 {
+		return 0
+	}
+	return round2(acute / chronic)
+}
