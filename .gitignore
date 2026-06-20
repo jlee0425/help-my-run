@@ -15,6 +15,9 @@ garmin-tokens/
 *.sqlite
 *.sqlite3
 
+# M1: uploaded CrossFit schedule images
+data/
+
 # Go
 /backend/bin/
 *.test
