@@ -109,3 +109,37 @@ type recoveryDayDTO struct {
 type recoveryResp struct {
 	Recovery []recoveryDayDTO `json:"recovery"`
 }
+
+// --- M1 /api/profile ---
+type profileDTO struct {
+	TargetWeeklyKm     float64 `json:"target_weekly_km"`
+	ProgressionMode    string  `json:"progression_mode"`
+	Zone2CeilingBpm    *int64  `json:"zone2_ceiling_bpm"`
+	ThresholdBpm       *int64  `json:"threshold_bpm"`
+	MaxHRBpm           *int64  `json:"max_hr_bpm"`
+	RunConstraintsJSON string  `json:"run_constraints_json"`
+	GoalText           string  `json:"goal_text"`
+	UpdatedAt          string  `json:"updated_at,omitempty"`
+}
+
+// --- M1 /api/plan/generate + /api/plan ---
+type planResponseDTO struct {
+	ID             int64        `json:"id"`
+	WeekStart      string       `json:"week_start"`
+	GeneratedAt    string       `json:"generated_at"`
+	FitnessSummary string       `json:"fitness_summary"`
+	WeeklyTargetKm float64      `json:"weekly_target_km"`
+	Days           []planDayDTO `json:"days"`
+	WeekRationale  string       `json:"week_rationale"`
+	OneFlag        string       `json:"one_flag"`
+}
+type planDayDTO struct {
+	Date          string  `json:"date"`
+	Dow           string  `json:"dow"`
+	RunType       string  `json:"run_type"`
+	DistanceKm    float64 `json:"distance_km"`
+	PaceTarget    string  `json:"pace_target"`
+	TimeNote      string  `json:"time_note"`
+	OptionalIfCNS bool    `json:"optional_if_cns"`
+	Rationale     string  `json:"rationale"`
+}
