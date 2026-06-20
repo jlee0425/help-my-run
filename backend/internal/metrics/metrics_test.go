@@ -205,3 +205,51 @@ func TestAcuteChronicRatio(t *testing.T) {
 		})
 	}
 }
+
+func TestPaceEstimates(t *testing.T) {
+	now := mustTime(t, "2026-06-22T12:00:00Z")
+
+	t.Run("no runs -> empty", func(t *testing.T) {
+		easy, thr := paceEstimates(nil, now)
+		if easy != "" || thr != "" {
+			t.Errorf("paceEstimates(nil) = (%q,%q), want empty", easy, thr)
+		}
+	})
+
+	t.Run("mixed runs", func(t *testing.T) {
+		acts := []store.Activity{
+			// easy ~6:00/km (360 s/km): 5km in 1800s.
+			{Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 5000, MovingTimeS: 1800},
+			// easy ~6:20/km (380 s/km): 5km in 1900s.
+			{Type: "Run", StartTime: "2026-06-18T06:00:00Z", DistanceM: 5000, MovingTimeS: 1900},
+			// recovery ~6:40/km (400 s/km): 5km in 2000s.
+			{Type: "Run", StartTime: "2026-06-16T06:00:00Z", DistanceM: 5000, MovingTimeS: 2000},
+			// tempo ~5:05/km (305 s/km): 5km in 1525s. -> fastest.
+			{Type: "Run", StartTime: "2026-06-14T06:00:00Z", DistanceM: 5000, MovingTimeS: 1525},
+			// a Ride -> excluded.
+			{Type: "Ride", StartTime: "2026-06-19T06:00:00Z", DistanceM: 20000, MovingTimeS: 3000},
+			// zero distance -> skipped.
+			{Type: "Run", StartTime: "2026-06-15T06:00:00Z", DistanceM: 0, MovingTimeS: 100},
+		}
+		// Qualifying sec/km sorted: [305, 360, 380, 400]. median = (360+380)/2 = 370 -> 6:10/km.
+		// fastest 25% = ceil(4*0.25)=1 -> [305] -> median 305 -> 5:05/km.
+		easy, thr := paceEstimates(acts, now)
+		if easy != "6:10/km" {
+			t.Errorf("easy = %q, want 6:10/km", easy)
+		}
+		if thr != "5:05/km" {
+			t.Errorf("threshold = %q, want 5:05/km", thr)
+		}
+	})
+
+	t.Run("threshold never slower than easy", func(t *testing.T) {
+		acts := []store.Activity{
+			{Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 5000, MovingTimeS: 1800},
+			{Type: "Run", StartTime: "2026-06-18T06:00:00Z", DistanceM: 5000, MovingTimeS: 1800},
+		}
+		easy, thr := paceEstimates(acts, now)
+		if easy != "6:00/km" || thr != "6:00/km" {
+			t.Errorf("got (easy=%q,thr=%q), want both 6:00/km", easy, thr)
+		}
+	})
+}
