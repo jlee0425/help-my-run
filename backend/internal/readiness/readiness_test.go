@@ -2,8 +2,11 @@ package readiness
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
+
+	"help-my-run/backend/internal/store"
 )
 
 func TestColorConstants(t *testing.T) {
@@ -91,5 +94,53 @@ func TestReadinessJSONTags(t *testing.T) {
 		if !strings.Contains(got, k) {
 			t.Errorf("JSON %s missing %q", got, k)
 		}
+	}
+}
+
+func i64p(v int64) *int64 { return &v }
+
+func TestSleepHours(t *testing.T) {
+	if got := sleepHours(nil); got != nil {
+		t.Errorf("sleepHours(nil) = %v, want nil", got)
+	}
+	if got := sleepHours(&store.SleepFields{}); got != nil {
+		t.Errorf("sleepHours(empty) = %v, want nil", got)
+	}
+	got := sleepHours(&store.SleepFields{DurationS: i64p(27000)})
+	if got == nil || math.Abs(*got-7.5) > 1e-9 {
+		t.Errorf("sleepHours(27000) = %v, want 7.5", got)
+	}
+}
+
+func TestBaseline(t *testing.T) {
+	if got, ok := baseline([]*int64{i64p(50), i64p(52)}); ok || got != 0 {
+		t.Errorf("baseline(2 vals) = (%v,%v), want (0,false)", got, ok)
+	}
+	got, ok := baseline([]*int64{i64p(48), i64p(50), i64p(52)})
+	if !ok || math.Abs(got-50.0) > 1e-9 {
+		t.Errorf("baseline(3 vals) = (%v,%v), want (50,true)", got, ok)
+	}
+	got, ok = baseline([]*int64{i64p(48), nil, i64p(50), i64p(52), nil})
+	if !ok || math.Abs(got-50.0) > 1e-9 {
+		t.Errorf("baseline(with nils) = (%v,%v), want (50,true)", got, ok)
+	}
+	if _, ok := baseline([]*int64{nil, nil, nil}); ok {
+		t.Errorf("baseline(all nil) ok = true, want false")
+	}
+}
+
+func TestPctDelta(t *testing.T) {
+	got := pctDelta(48, 58.4)
+	if math.Abs(got-(-17.808219178082192)) > 1e-9 {
+		t.Errorf("pctDelta(48,58.4) = %v, want ~-17.808", got)
+	}
+	if got := pctDelta(48, 0); got != 0 {
+		t.Errorf("pctDelta(48,0) = %v, want 0", got)
+	}
+}
+
+func TestBpmDelta(t *testing.T) {
+	if got := bpmDelta(54, 50.2); math.Abs(got-3.8) > 1e-9 {
+		t.Errorf("bpmDelta(54,50.2) = %v, want 3.8", got)
 	}
 }
