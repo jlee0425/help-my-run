@@ -1,7 +1,8 @@
 import React from 'react';
 import { Text } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import type { Status, ActivitiesResponse, RecoveryResponse } from '../../src/api/types';
+import type { TodayBriefing } from '../../src/api/types';
 
 // expo-router's <Link> renders its text children inside a pressable <Text> in
 // real usage; the mock mirrors that so React Native's "strings must be inside
@@ -58,11 +59,44 @@ const recoveryData: RecoveryResponse = {
   ],
 };
 
+const todayData: TodayBriefing = {
+  date: '2026-06-20',
+  readiness_color: 'amber',
+  drivers: {
+    date: '2026-06-20',
+    sleep_hours: 6.1, sleep_score: 62,
+    hrv_last_night_ms: 48, hrv_baseline_ms: 58.4, hrv_delta_pct: -17.8,
+    rhr_last_night: 54, rhr_baseline: 50.2, rhr_delta_bpm: 3.8,
+    body_battery_high: 61, recovery_trend: 'declining', data_complete: true,
+  },
+  reasons: ['HRV -17.8% vs baseline', 'Sleep score 62 (<65)'],
+  action: 'SOFTEN',
+  original_session: {
+    date: '2026-06-20', dow: 'Fri', run_type: 'tempo', distance_km: 6,
+    pace_target: '5:05/km', time_note: '~20:00 after CrossFit',
+    optional_if_cns: false, rationale: 'Threshold work.',
+  },
+  effective_session: {
+    date: '2026-06-20', dow: 'Fri', run_type: 'easy', distance_km: 4.5,
+    pace_target: '6:00/km', time_note: '~20:00 after CrossFit',
+    optional_if_cns: true, rationale: 'Trimmed to easy.',
+  },
+  rationale: 'HRV is 18% below baseline and sleep was short.',
+  source: 'ai',
+  stale: false,
+};
+
+const mockUndoMutate = jest.fn();
+
 jest.mock('../../src/api/hooks', () => ({
   useStatus: () => ({ data: statusData, isPending: false, isError: false }),
   useActivities: () => ({ data: activitiesData, isPending: false, isError: false }),
   useRecovery: () => ({ data: recoveryData, isPending: false, isError: false }),
+  useToday: () => ({ data: todayData, isPending: false, isError: false }),
+  useUndoToday: () => ({ mutate: mockUndoMutate, isPending: false }),
 }));
+
+afterEach(() => { jest.clearAllMocks(); });
 
 import HomeScreen from '../index';
 
@@ -102,5 +136,36 @@ describe('HomeScreen', () => {
   it('renders a link to view this week\'s plan', async () => {
     const { getByText } = await render(<HomeScreen />);
     expect(getByText("This week's plan")).toBeTruthy();
+  });
+
+  it('renders the readiness color pill', async () => {
+    const { getByTestId } = await render(<HomeScreen />);
+    expect(getByTestId('today-readiness').props.children).toContain('amber');
+  });
+
+  it('renders the readiness reasons (drivers)', async () => {
+    const { getByText } = await render(<HomeScreen />);
+    expect(getByText('HRV -17.8% vs baseline')).toBeTruthy();
+    expect(getByText('Sleep score 62 (<65)')).toBeTruthy();
+  });
+
+  it('renders what-changed: original tempo 6 vs effective easy 4.5', async () => {
+    const { getByTestId } = await render(<HomeScreen />);
+    expect(getByTestId('today-original').props.children.join('')).toContain('tempo');
+    expect(getByTestId('today-effective').props.children.join('')).toContain('easy');
+    expect(getByTestId('today-effective').props.children.join('')).toContain('4.5');
+  });
+
+  it('renders the why (rationale)', async () => {
+    const { getByTestId } = await render(<HomeScreen />);
+    expect(getByTestId('today-rationale').props.children).toContain('HRV is 18% below baseline');
+  });
+
+  it('calls undo when the Undo button is pressed', async () => {
+    const { getByTestId } = await render(<HomeScreen />);
+    await act(async () => {
+      fireEvent.press(getByTestId('btn-today-undo'));
+    });
+    expect(mockUndoMutate).toHaveBeenCalledTimes(1);
   });
 });
