@@ -93,3 +93,6 @@ class GarminClient:
 
     def get_stats(self, cdate: str) -> dict:
         return self._g.get_stats(cdate)
+
+    def get_max_metrics(self, cdate: str) -> dict:
+        return self._g.get_max_metrics(cdate)
