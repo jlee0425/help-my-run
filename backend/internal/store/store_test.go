@@ -27,6 +27,7 @@ func TestOpenAndMigrate(t *testing.T) {
 	wantTables := []string{
 		"strava_tokens", "activities", "activity_splits",
 		"garmin_sleep", "garmin_hrv", "garmin_body_battery", "garmin_rhr",
+		"garmin_vo2max",
 		"sync_log",
 	}
 	for _, tbl := range wantTables {
