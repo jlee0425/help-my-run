@@ -147,6 +147,25 @@ func TestAnalyzeFallbackNotEnoughData(t *testing.T) {
 	}
 }
 
+func TestActivityLimitSizesToWindow(t *testing.T) {
+	// Long window: cap is window-derived (weeks*14) so the deepest weeks are not
+	// truncated for a high-volume athlete (runs + CrossFit).
+	if got := activityLimit(MaxWeeks); got != MaxWeeks*14 {
+		t.Errorf("activityLimit(%d) = %d, want %d", MaxWeeks, got, MaxWeeks*14)
+	}
+	if got := activityLimit(20); got != 20*14 {
+		t.Errorf("activityLimit(20) = %d, want %d", got, 20*14)
+	}
+	// Short window: floor keeps the cap >= 200 (matching the codebase convention)
+	// so short windows still pull enough baseline points.
+	if got := activityLimit(MinWeeks); got != 200 {
+		t.Errorf("activityLimit(%d) = %d, want 200 (floor)", MinWeeks, got)
+	}
+	if got := activityLimit(DefaultWeeks); got != 200 {
+		t.Errorf("activityLimit(%d) = %d, want 200 (floor, 12*14=168 < 200)", DefaultWeeks, got)
+	}
+}
+
 func hasPair(args []string, k, v string) bool {
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == k && args[i+1] == v {
