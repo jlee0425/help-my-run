@@ -13,6 +13,7 @@ type WorkerOutput struct {
 	HRV         []HrvDay         `json:"hrv"`
 	BodyBattery []BodyBatteryDay `json:"body_battery"`
 	RHR         []RhrDay         `json:"rhr"`
+	VO2Max      []Vo2maxDay      `json:"vo2max"`
 }
 
 // SleepDay is one per-day sleep entry. RawJSON is kept verbatim for the store.
@@ -50,4 +51,11 @@ type RhrDay struct {
 	Date      string          `json:"date"`
 	RestingHR *int64          `json:"resting_hr"`
 	RawJSON   json.RawMessage `json:"raw_json"`
+}
+
+// Vo2maxDay is one per-day VO2max entry (running VO2max from get_max_metrics).
+type Vo2maxDay struct {
+	Date    string          `json:"date"`
+	VO2Max  *float64        `json:"vo2max"`
+	RawJSON json.RawMessage `json:"raw_json"`
 }

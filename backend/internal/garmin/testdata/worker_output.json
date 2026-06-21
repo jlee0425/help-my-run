@@ -16,5 +16,9 @@
   "rhr": [
     { "date": "2026-06-14", "resting_hr": 48, "raw_json": {"restingHeartRate": 48} },
     { "date": "2026-06-15", "resting_hr": 47, "raw_json": {"restingHeartRate": 47} }
+  ],
+  "vo2max": [
+    { "date": "2026-06-14", "vo2max": 51.0, "raw_json": {"generic": {"vo2MaxValue": 51.0}} },
+    { "date": "2026-06-15", "vo2max": 52.0, "raw_json": {"generic": {"vo2MaxValue": 52.0}} }
   ]
 }
