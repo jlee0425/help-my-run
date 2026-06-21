@@ -4,6 +4,7 @@
 package progress
 
 import (
+	"math"
 	"time"
 
 	"help-my-run/backend/internal/store"
@@ -76,6 +77,66 @@ type ProgressReport struct {
 type weekBucket struct {
 	start time.Time
 	end   time.Time
+}
+
+// weekBuckets returns `weeks` contiguous half-open 7-day windows (start, end]
+// ending at now, oldest-first (so index 0 is the oldest week).
+func weekBuckets(weeks int, now time.Time) []weekBucket {
+	out := make([]weekBucket, weeks)
+	end := now
+	for i := weeks - 1; i >= 0; i-- {
+		start := end.AddDate(0, 0, -7)
+		out[i] = weekBucket{start: start, end: end}
+		end = start
+	}
+	return out
+}
+
+// summarize derives (current, baseline, deltaAbs, direction) from a weekly
+// series. current = last non-nil; baseline = first non-nil; deltaAbs =
+// current-baseline. Direction is the raw VALUE movement (up = value increased),
+// independent of lowerIsBetter (the app maps direction+lowerIsBetter to a
+// good/bad color). isPace selects the absolute paceEps deadband; otherwise a
+// relative relDeadband (fraction of baseline) is used. All-nil -> (nil,nil,nil,flat).
+func summarize(series []*float64, lowerIsBetter, isPace bool) (cur, base, delta *float64, dir TrendDirection) {
+	_ = lowerIsBetter // retained for self-documentation; direction is raw value movement
+	for _, v := range series {
+		if v != nil {
+			if base == nil {
+				base = v
+			}
+			cur = v
+		}
+	}
+	if cur == nil || base == nil {
+		return nil, nil, nil, DirectionFlat
+	}
+	d := *cur - *base
+	delta = &d
+
+	if isPace {
+		switch {
+		case d > paceEps:
+			return cur, base, delta, DirectionUp
+		case d < -paceEps:
+			return cur, base, delta, DirectionDown
+		default:
+			return cur, base, delta, DirectionFlat
+		}
+	}
+	// Relative deadband for non-pace signals.
+	var rel float64
+	if *base != 0 {
+		rel = d / math.Abs(*base)
+	}
+	switch {
+	case rel > relDeadband:
+		return cur, base, delta, DirectionUp
+	case rel < -relDeadband:
+		return cur, base, delta, DirectionDown
+	default:
+		return cur, base, delta, DirectionFlat
+	}
 }
 
 // ensure store is referenced (used by ComputeProgress in a later task).
