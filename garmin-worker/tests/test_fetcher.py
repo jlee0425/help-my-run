@@ -6,9 +6,10 @@ from garmin_worker import fetcher
 class _MockClient:
     """Mock GarminClient: deterministic per-date data, records calls."""
 
-    def __init__(self, hrv_map=None, raise_on=None):
+    def __init__(self, hrv_map=None, vo2max_map=None, raise_on=None):
         self.calls = []
         self._hrv_map = hrv_map or {}
+        self._vo2max_map = vo2max_map or {}
         self._raise_on = raise_on  # (method_name, exception) to raise
 
     def _maybe_raise(self, method):
@@ -38,6 +39,15 @@ class _MockClient:
         self._maybe_raise("get_stats")
         return {"restingHeartRate": 50}
 
+    def get_max_metrics(self, cdate):
+        self.calls.append(("vo2max", cdate))
+        self._maybe_raise("get_max_metrics")
+        # Default: every day has a value unless vo2max_map overrides.
+        # Real endpoint returns a one-element list, not a top-level dict.
+        if cdate in self._vo2max_map:
+            return self._vo2max_map[cdate]
+        return [{"generic": {"calendarDate": cdate, "vo2MaxValue": 50.0}, "cycling": None}]
+
 
 def _noop_sleep(_):
     return None
@@ -50,7 +60,7 @@ def test_run_fetch_top_level_shape_and_echo():
         fetched_at="2026-06-15T05:00:12Z", sleep_fn=_noop_sleep,
     )
     assert list(out.keys()) == [
-        "since", "until", "fetched_at", "sleep", "hrv", "body_battery", "rhr",
+        "since", "until", "fetched_at", "sleep", "hrv", "body_battery", "rhr", "vo2max",
     ]
     assert out["since"] == "2026-06-14"
     assert out["until"] == "2026-06-15"
@@ -126,3 +136,28 @@ def test_run_fetch_output_is_json_serializable():
         fetched_at="t", sleep_fn=_noop_sleep,
     )
     json.loads(json.dumps(out))  # must not raise
+
+
+def test_run_fetch_appends_vo2max_per_day():
+    mc = _MockClient()
+    out = fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="t", sleep_fn=_noop_sleep,
+    )
+    assert [v["date"] for v in out["vo2max"]] == ["2026-06-14", "2026-06-15"]
+    assert out["vo2max"][0]["vo2max"] == 50.0
+
+
+def test_run_fetch_omits_vo2max_null_days():
+    # 06-14 returns an empty list (no data) -> omitted; 06-15 has a value.
+    # Both use the real list-shaped endpoint payload.
+    mc = _MockClient(vo2max_map={
+        "2026-06-14": [],
+        "2026-06-15": [{"generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0}, "cycling": None}],
+    })
+    out = fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="t", sleep_fn=_noop_sleep,
+    )
+    assert [v["date"] for v in out["vo2max"]] == ["2026-06-15"]  # 06-14 omitted (no value)
+    assert out["vo2max"][0]["vo2max"] == 52.0
