@@ -288,3 +288,90 @@ func parseDate(date string) (time.Time, bool) {
 	}
 	return t, true
 }
+
+// signalMeta is the static label+unit+polarity for each signal key.
+type signalMeta struct {
+	label         string
+	unit          string
+	lowerIsBetter bool
+	isPace        bool
+}
+
+var signalMetas = map[string]signalMeta{
+	SignalPaceAtHR:    {label: "Pace @ Z2 HR", unit: "s/km", lowerIsBetter: true, isPace: true},
+	SignalVo2max:      {label: "VO2max", unit: "ml/kg/min", lowerIsBetter: false},
+	SignalRestingHR:   {label: "Resting HR", unit: "bpm", lowerIsBetter: true},
+	SignalHRVBaseline: {label: "HRV baseline", unit: "ms", lowerIsBetter: false},
+	SignalWeeklyLoad:  {label: "Weekly volume", unit: "km", lowerIsBetter: false},
+}
+
+// buildSignal assembles one TrendSummary from a key + computed series.
+func buildSignal(key string, series []*float64) TrendSummary {
+	m := signalMetas[key]
+	cur, base, delta, dir := summarize(series, m.lowerIsBetter, m.isPace)
+	return TrendSummary{
+		Key:           key,
+		Label:         m.label,
+		Unit:          m.unit,
+		Current:       cur,
+		Baseline:      base,
+		DeltaAbs:      delta,
+		Direction:     dir,
+		LowerIsBetter: m.lowerIsBetter,
+		Series:        series,
+	}
+}
+
+// countNonNil returns the number of non-nil entries in a series.
+func countNonNil(series []*float64) int {
+	n := 0
+	for _, v := range series {
+		if v != nil {
+			n++
+		}
+	}
+	return n
+}
+
+// ComputeProgress builds the deterministic ProgressReport over `weeks` weekly
+// buckets ending at `now`. Pure: caller supplies all rows + now. Signal order is
+// fixed (pace_at_hr, vo2max, resting_hr, hrv_baseline, weekly_load). Series are
+// always exactly `weeks` long, oldest-first, nil = a gap (never interpolated).
+func ComputeProgress(
+	acts []store.Activity,
+	recovery []store.RecoveryDay,
+	vo2max []store.Vo2maxPoint,
+	profile store.AthleteProfile,
+	weeks int,
+	now time.Time,
+) ProgressReport {
+	buckets := weekBuckets(weeks, now)
+
+	signals := []TrendSummary{
+		buildSignal(SignalPaceAtHR, paceAtHRSeries(acts, profile, buckets)),
+		buildSignal(SignalVo2max, vo2maxSeries(vo2max, buckets)),
+		buildSignal(SignalRestingHR, rhrSeries(recovery, buckets)),
+		buildSignal(SignalHRVBaseline, hrvSeries(recovery, buckets)),
+		buildSignal(SignalWeeklyLoad, weeklyLoadSeries(acts, buckets)),
+	}
+
+	// weekly_load is CONTEXT (always filled with 0.0, never nil), not a fitness
+	// verdict — exclude it so the gate requires >=2 of the FOUR real fitness
+	// signals (pace_at_hr, vo2max, resting_hr, hrv_baseline).
+	enough := 0
+	for _, s := range signals {
+		if s.Key == SignalWeeklyLoad {
+			continue
+		}
+		if countNonNil(s.Series) >= 2 {
+			enough++
+		}
+	}
+
+	return ProgressReport{
+		Weeks:       weeks,
+		GeneratedAt: now.UTC().Format(time.RFC3339),
+		Signals:     signals,
+		EnoughData:  enough >= enoughDataMinSignals,
+	}
+}

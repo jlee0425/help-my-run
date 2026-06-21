@@ -272,3 +272,83 @@ func TestVo2maxSeriesLastInBucket(t *testing.T) {
 		t.Errorf("wk1 = %v, want 52 (latest in bucket)", got[1])
 	}
 }
+
+func TestComputeProgressFullReport(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	hr := func(v float64) *float64 { return &v }
+	i := func(v int64) *int64 { return &v }
+	f := func(v float64) *float64 { return &v }
+	z2 := int64(145)
+	prof := store.AthleteProfile{Zone2CeilingBpm: &z2}
+
+	acts := []store.Activity{
+		// newest week in-band 5km@1650s (330)
+		mkRun("2026-06-20T07:00:00Z", 5000, 1650, hr(146)),
+		// oldest week (12w back) in-band 5km@1750s (350)
+		mkRun("2026-03-31T07:00:00Z", 5000, 1750, hr(144)),
+	}
+	rec := []store.RecoveryDay{
+		{Date: "2026-06-20", RHR: &store.RhrFields{RestingHR: i(47)}, HRV: &store.HrvFields{LastNightAvgMs: i(52)}},
+		{Date: "2026-03-31", RHR: &store.RhrFields{RestingHR: i(50)}, HRV: &store.HrvFields{LastNightAvgMs: i(46)}},
+	}
+	vo2 := []store.Vo2maxPoint{
+		{Date: "2026-06-19", Vo2max: f(52)},
+		{Date: "2026-04-01", Vo2max: f(50)},
+	}
+
+	rep := ComputeProgress(acts, rec, vo2, prof, 12, now)
+	if rep.Weeks != 12 {
+		t.Errorf("Weeks = %d, want 12", rep.Weeks)
+	}
+	if rep.GeneratedAt == "" {
+		t.Error("GeneratedAt empty")
+	}
+	if len(rep.Signals) != 5 {
+		t.Fatalf("len(Signals) = %d, want 5", len(rep.Signals))
+	}
+	// Signal order is fixed: pace_at_hr, vo2max, resting_hr, hrv_baseline, weekly_load.
+	wantOrder := []string{SignalPaceAtHR, SignalVo2max, SignalRestingHR, SignalHRVBaseline, SignalWeeklyLoad}
+	for i, s := range rep.Signals {
+		if s.Key != wantOrder[i] {
+			t.Errorf("signal[%d].Key = %q, want %q", i, s.Key, wantOrder[i])
+		}
+		if len(s.Series) != 12 {
+			t.Errorf("signal[%d] series len = %d, want 12", i, len(s.Series))
+		}
+	}
+	pace := rep.Signals[0]
+	if pace.Unit != "s/km" || !pace.LowerIsBetter {
+		t.Errorf("pace card = %+v", pace)
+	}
+	if pace.Current == nil || *pace.Current != 330 || pace.Baseline == nil || *pace.Baseline != 350 {
+		t.Errorf("pace cur/base = %v/%v, want 330/350", pace.Current, pace.Baseline)
+	}
+	if pace.Direction != DirectionDown {
+		t.Errorf("pace direction = %q, want down", pace.Direction)
+	}
+	rhr := rep.Signals[2]
+	if !rhr.LowerIsBetter {
+		t.Error("resting_hr lower_is_better should be true")
+	}
+	if !rep.EnoughData {
+		t.Error("EnoughData = false, want true (>=2 signals with >=2 points)")
+	}
+}
+
+func TestComputeProgressNotEnoughData(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	hr := func(v float64) *float64 { return &v }
+	z2 := int64(145)
+	prof := store.AthleteProfile{Zone2CeilingBpm: &z2}
+	// Only one in-band run total -> pace has 1 point; nothing else -> < 2 signals w/ >=2 pts.
+	acts := []store.Activity{mkRun("2026-06-20T07:00:00Z", 5000, 1650, hr(146))}
+	rep := ComputeProgress(acts, nil, nil, prof, 12, now)
+	if rep.EnoughData {
+		t.Error("EnoughData = true, want false (thin history)")
+	}
+	// Signals still computed (the handler decides whether to blank them); contract
+	// §3.3: EnoughData is the only thin-history gate.
+	if len(rep.Signals) != 5 {
+		t.Errorf("len(Signals) = %d, want 5", len(rep.Signals))
+	}
+}
