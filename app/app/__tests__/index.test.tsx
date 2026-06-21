@@ -138,6 +138,11 @@ describe('HomeScreen', () => {
     expect(getByText("This week's plan")).toBeTruthy();
   });
 
+  it('renders a navigation link to Progress', async () => {
+    const { getByText } = await render(<HomeScreen />);
+    expect(getByText('Progress')).toBeTruthy();
+  });
+
   it('renders the readiness color pill', async () => {
     const { getByTestId } = await render(<HomeScreen />);
     expect(getByTestId('today-readiness').props.children).toContain('amber');

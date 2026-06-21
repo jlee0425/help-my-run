@@ -106,6 +106,9 @@ export default function HomeScreen() {
       <Link href="/profile" style={styles.link}>
         Profile
       </Link>
+      <Link href="/progress" style={styles.link}>
+        Progress
+      </Link>
 
       <Text style={styles.heading}>Recent runs</Text>
       <FlatList
