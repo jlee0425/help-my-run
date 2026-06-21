@@ -37,6 +37,7 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 		ImageDir: t.TempDir(),
 		Agent:    &fakeAgent{},
 		Pusher:   &fakePusher{},
+		Progress: &fakeProgress{},
 	}
 	return NewRouter(deps), s
 }

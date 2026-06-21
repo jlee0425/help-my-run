@@ -5,6 +5,7 @@ import (
 
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/llm"
+	"help-my-run/backend/internal/progress"
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 )
@@ -36,11 +37,40 @@ func (f *fakePusher) Send(ctx context.Context, msg push.Message) error {
 	return f.sendErr
 }
 
+// fakeProgress is the injected api.Progress for handler tests.
+type fakeProgress struct {
+	report     progress.ProgressReport
+	read       progress.ProgressRead
+	reportErr  error
+	analyzeErr error
+	lastWeeks  int
+}
+
+func (f *fakeProgress) Report(ctx context.Context, weeks int) (progress.ProgressReport, error) {
+	f.lastWeeks = weeks
+	if f.reportErr != nil {
+		return progress.ProgressReport{}, f.reportErr
+	}
+	if f.report.Weeks == 0 {
+		f.report.Weeks = weeks
+	}
+	return f.report, nil
+}
+
+func (f *fakeProgress) Analyze(ctx context.Context, weeks int) (progress.ProgressRead, error) {
+	f.lastWeeks = weeks
+	if f.analyzeErr != nil {
+		return progress.ProgressRead{}, f.analyzeErr
+	}
+	return f.read, nil
+}
+
 // Compile-time interface conformance checks (the RED-state assertions).
 var (
-	_ Coach  = (*fakeCoach)(nil)
-	_ Agent  = (*fakeAgent)(nil)
-	_ Pusher = (*fakePusher)(nil)
+	_ Coach    = (*fakeCoach)(nil)
+	_ Agent    = (*fakeAgent)(nil)
+	_ Pusher   = (*fakePusher)(nil)
+	_ Progress = (*fakeProgress)(nil)
 )
 
 var _ = readiness.ColorGreen

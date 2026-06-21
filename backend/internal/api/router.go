@@ -11,6 +11,7 @@ import (
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
+	"help-my-run/backend/internal/progress"
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
@@ -44,16 +45,26 @@ type Pusher interface {
 	Send(ctx context.Context, msg push.Message) error
 }
 
+// Progress is the M3.1 progress-engine seam, injected from main.go (avoids an
+// import cycle: api must not import the concrete progress.Engine). *progress.Engine
+// satisfies it structurally. Report builds the deterministic trends; Analyze adds
+// the claude -p read with deterministic fallback.
+type Progress interface {
+	Report(ctx context.Context, weeks int) (progress.ProgressReport, error)
+	Analyze(ctx context.Context, weeks int) (progress.ProgressRead, error)
+}
+
 // Deps are the handler dependencies injected by main.go (and tests).
 type Deps struct {
 	Store    *store.Store
 	Strava   *strava.Client
 	APIToken string
 	SyncFunc SyncFunc
-	Coach    Coach  // M1
-	ImageDir string // M1: where uploaded CrossFit images are saved
-	Agent    Agent  // M2: daily loop (POST /api/agent/run)
-	Pusher   Pusher // M2: push transport
+	Coach    Coach    // M1
+	ImageDir string   // M1: where uploaded CrossFit images are saved
+	Agent    Agent    // M2: daily loop (POST /api/agent/run)
+	Pusher   Pusher   // M2: push transport
+	Progress Progress // M3.1: progress engine (GET /api/progress, POST /api/progress/analyze)
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.
