@@ -46,6 +46,9 @@ func TestRunGarminFetchParsesOutput(t *testing.T) {
 	if len(out.RHR) != 2 || *out.RHR[1].RestingHR != 47 {
 		t.Errorf("rhr parse wrong: %+v", out.RHR)
 	}
+	if len(out.VO2Max) != 2 || out.VO2Max[1].VO2Max == nil || *out.VO2Max[1].VO2Max != 52.0 {
+		t.Errorf("vo2max parse wrong: %+v", out.VO2Max)
+	}
 	// raw_json must be preserved as a JSON string for the store.
 	if !strings.Contains(string(out.Sleep[0].RawJSON), "dailySleepDTO") {
 		t.Errorf("sleep raw_json missing: %s", out.Sleep[0].RawJSON)
