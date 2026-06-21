@@ -124,6 +124,51 @@ func (s *Store) UpsertRhr(r RhrRow) error {
 	return err
 }
 
+// Vo2maxRow maps to garmin_vo2max.
+type Vo2maxRow struct {
+	Date    string
+	Vo2max  *float64
+	RawJSON string
+}
+
+// UpsertVo2max upserts one garmin_vo2max row by date.
+func (s *Store) UpsertVo2max(r Vo2maxRow) error {
+	_, err := s.DB.Exec(`
+		INSERT INTO garmin_vo2max (date, vo2max, raw_json)
+		VALUES (?,?,?)
+		ON CONFLICT(date) DO UPDATE SET
+			vo2max=excluded.vo2max, raw_json=excluded.raw_json`,
+		r.Date, r.Vo2max, r.RawJSON)
+	return err
+}
+
+// Vo2maxPoint is one dated VO2max reading (vo2max may be nil when stored null).
+type Vo2maxPoint struct {
+	Date   string
+	Vo2max *float64
+}
+
+// ListVo2max returns up to `limit` garmin_vo2max rows, most-recent-first by date.
+func (s *Store) ListVo2max(limit int) ([]Vo2maxPoint, error) {
+	rows, err := s.DB.Query(`
+		SELECT date, vo2max FROM garmin_vo2max
+		ORDER BY date DESC
+		LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Vo2maxPoint
+	for rows.Next() {
+		var p Vo2maxPoint
+		if err := rows.Scan(&p.Date, &p.Vo2max); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // CountRecoveryDays returns the number of distinct calendar dates present
 // across all four garmin_* tables.
 func (s *Store) CountRecoveryDays() (int, error) {
