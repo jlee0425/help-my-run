@@ -16,5 +16,9 @@
   "rhr": [
     {"date": "2026-06-14", "resting_hr": 48, "raw_json": {"restingHeartRate": 48, "totalSteps": 9000}},
     {"date": "2026-06-15", "resting_hr": 47, "raw_json": {"restingHeartRate": 47, "totalSteps": 11000}}
+  ],
+  "vo2max": [
+    {"date": "2026-06-14", "vo2max": 51.0, "raw_json": {"userId": 1, "generic": {"calendarDate": "2026-06-14", "vo2MaxValue": 51.0, "fitnessAge": 30}, "cycling": null}},
+    {"date": "2026-06-15", "vo2max": 52.0, "raw_json": {"userId": 1, "generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0, "fitnessAge": 30}, "cycling": null}}
   ]
 }
