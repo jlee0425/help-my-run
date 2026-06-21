@@ -20,6 +20,7 @@ import (
 	"help-my-run/backend/internal/config"
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/llm"
+	"help-my-run/backend/internal/progress"
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/scheduler"
 	"help-my-run/backend/internal/store"
@@ -32,14 +33,15 @@ const syncInterval = 6 * time.Hour
 
 // App is the wired application graph (returned by Wire so tests can drive it).
 type App struct {
-	Store   *store.Store
-	Handler http.Handler
-	Strava  *strava.Client
-	Runner  garmin.Runner
-	Cfg     *config.Config
-	Coach   *coach.Coach // M2: shared coach engine (also drives the agent)
-	Agent   *agent.Agent // M2: daily readiness/adjust loop
-	Pusher  *push.Client // M2: Expo push transport
+	Store    *store.Store
+	Handler  http.Handler
+	Strava   *strava.Client
+	Runner   garmin.Runner
+	Cfg      *config.Config
+	Coach    *coach.Coach     // M2: shared coach engine (also drives the agent)
+	Agent    *agent.Agent     // M2: daily readiness/adjust loop
+	Pusher   *push.Client     // M2: Expo push transport
+	Progress *progress.Engine // M3.1: deterministic trends + claude -p read
 }
 
 // Wire builds the full application graph from config: opens + migrates the
@@ -71,6 +73,7 @@ func Wire(cfg *config.Config) (*App, error) {
 		Timeout: 120 * time.Second,
 	}
 	coachEngine := coach.New(s, llmClient, cfg.ClaudeModel, cfg.ImageDir)
+	progressEngine := progress.New(s, llmClient, cfg.ClaudeModel)
 
 	pushClient := push.NewClient(cfg.ExpoPushBaseURL)
 	dailyAgent := agent.New(
@@ -91,17 +94,19 @@ func Wire(cfg *config.Config) (*App, error) {
 		ImageDir: cfg.ImageDir,
 		Agent:    apiAgent{a: dailyAgent, store: s},
 		Pusher:   pushClient,
+		Progress: progressEngine,
 	})
 
 	return &App{
-		Store:   s,
-		Handler: handler,
-		Strava:  stravaClient,
-		Runner:  runner,
-		Cfg:     cfg,
-		Coach:   coachEngine,
-		Agent:   dailyAgent,
-		Pusher:  pushClient,
+		Store:    s,
+		Handler:  handler,
+		Strava:   stravaClient,
+		Runner:   runner,
+		Cfg:      cfg,
+		Coach:    coachEngine,
+		Agent:    dailyAgent,
+		Pusher:   pushClient,
+		Progress: progressEngine,
 	}, nil
 }
 

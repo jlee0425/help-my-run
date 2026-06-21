@@ -122,6 +122,28 @@ func TestWireBuildsM2Graph(t *testing.T) {
 	}
 }
 
+func TestWireInjectsProgress(t *testing.T) {
+	app, err := Wire(testCfg(t))
+	if err != nil {
+		t.Fatalf("Wire error = %v", err)
+	}
+	defer func() { _ = app.Store.Close() }()
+
+	if app.Progress == nil {
+		t.Error("app.Progress = nil, want a wired *progress.Engine")
+	}
+
+	// GET /api/progress is bearer-protected and served by the injected engine ->
+	// 200 (computes from an empty store; enough_data:false, no claude needed).
+	req := httptest.NewRequest(http.MethodGet, "/api/progress?weeks=12", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/api/progress = %d, want 200 (progress engine wired)", rec.Code)
+	}
+}
+
 func TestWireTzdataLoadsSeoul(t *testing.T) {
 	_, err := loadAgentLocation("Asia/Seoul")
 	if err != nil {
