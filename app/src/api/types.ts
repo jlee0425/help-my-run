@@ -145,3 +145,31 @@ export interface RunResult {
   pushed: boolean;
   error: string | null;
 }
+
+// --- M3.1 progress types (snake_case wire JSON; mirror the Go DTO exactly) ---
+
+export type TrendDirection = 'up' | 'down' | 'flat';
+
+export interface TrendSummary {
+  key: string;            // 'pace_at_hr' | 'vo2max' | 'resting_hr' | 'hrv_baseline' | 'weekly_load'
+  label: string;
+  unit: string;           // 's/km' | 'ml/kg/min' | 'bpm' | 'ms' | 'km'
+  current: number | null;
+  baseline: number | null;
+  delta_abs: number | null;
+  direction: TrendDirection;
+  lower_is_better: boolean;
+  series: (number | null)[]; // len == weeks; oldest-first; null = gap
+}
+
+export interface ProgressReport {
+  weeks: number;
+  generated_at: string;
+  enough_data: boolean;
+  signals: TrendSummary[];
+}
+
+export interface ProgressRead {
+  text: string;
+  source: 'ai' | 'fallback';
+}
