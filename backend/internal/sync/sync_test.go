@@ -132,13 +132,14 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 	if res.Status != "ok" || res.Error != nil {
 		t.Fatalf("result = %+v, want ok", res)
 	}
-	// Fixture has 2 sleep + 1 hrv + 2 bb + 2 rhr = 7 upserts.
-	if res.Synced != 7 {
-		t.Errorf("synced = %d, want 7", res.Synced)
+	// Fixture has 2 sleep + 1 hrv + 2 bb + 2 rhr + 2 vo2max = 9 upserts.
+	if res.Synced != 9 {
+		t.Errorf("synced = %d, want 9", res.Synced)
 	}
 
 	counts := map[string]int{
 		"garmin_sleep": 0, "garmin_hrv": 0, "garmin_body_battery": 0, "garmin_rhr": 0,
+		"garmin_vo2max": 0,
 	}
 	for tbl := range counts {
 		var n int
@@ -148,8 +149,9 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 		counts[tbl] = n
 	}
 	if counts["garmin_sleep"] != 2 || counts["garmin_hrv"] != 1 ||
-		counts["garmin_body_battery"] != 2 || counts["garmin_rhr"] != 2 {
-		t.Errorf("counts = %+v, want sleep2 hrv1 bb2 rhr2", counts)
+		counts["garmin_body_battery"] != 2 || counts["garmin_rhr"] != 2 ||
+		counts["garmin_vo2max"] != 2 {
+		t.Errorf("counts = %+v, want sleep2 hrv1 bb2 rhr2 vo2max2", counts)
 	}
 
 	// raw_json persisted from the worker.
@@ -299,5 +301,38 @@ func TestRunTickerCallsAndStops(t *testing.T) {
 
 	if n := atomic.LoadInt32(&calls); n < 1 {
 		t.Errorf("tick calls = %d, want >= 1", n)
+	}
+}
+
+func TestSyncGarminBackfillWindowIs84Days(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	s := newStore(t)
+
+	// Stub worker: write the args it was called with to argfile, emit empty
+	// (but valid) contract JSON so the upsert loops run with 0 rows.
+	dir := t.TempDir()
+	argfile := filepath.Join(dir, "args.txt")
+	script := filepath.Join(dir, "capture.sh")
+	body := "#!/bin/sh\necho \"$@\" > '" + argfile + "'\n" +
+		`echo '{"since":"x","until":"x","fetched_at":"x","sleep":[],"hrv":[],"body_battery":[],"rhr":[],"vo2max":[]}'` + "\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	r := garmin.Runner{Python: "/bin/sh", Script: script}
+
+	res := SyncGarmin(context.Background(), s, r, nil)
+	if res.Status != "ok" {
+		t.Fatalf("status = %q (err=%v), want ok", res.Status, res.Error)
+	}
+
+	gotArgs, err := os.ReadFile(argfile)
+	if err != nil {
+		t.Fatalf("read argfile: %v", err)
+	}
+	want := time.Now().AddDate(0, 0, -84).Format("2006-01-02")
+	if !strings.Contains(string(gotArgs), "--since "+want) {
+		t.Errorf("worker args = %q, want --since %s (~12-week backfill)", strings.TrimSpace(string(gotArgs)), want)
 	}
 }

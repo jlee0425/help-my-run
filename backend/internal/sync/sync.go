@@ -159,10 +159,15 @@ func mapLaps(activityID int64, laps []strava.Lap) []store.Split {
 }
 
 // garminBackfillDays is the default look-back when Garmin has never synced.
-const garminBackfillDays = 30
+// M3.1: 84d (~12 weeks) to seed VO2max + recovery trend history (spec §4).
+// NOTE: first-sync-only; subsequent syncs use sync_log.last_synced_at. This
+// also deepens sleep/hrv/bb/rhr first-sync history (acceptable, arguably
+// desirable — those trends feed the progress engine too).
+const garminBackfillDays = 84
 
 // SyncGarmin runs the Python worker since the last successful Garmin sync (or a
-// ~30-day backfill), upserts the four garmin_* tables, and records sync_log.
+// ~84-day / ~12-week backfill), upserts the five garmin_* tables, and records
+// sync_log.
 func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv []string) SourceResult {
 	const source = "garmin"
 
@@ -209,6 +214,14 @@ func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv [
 	for _, d := range out.RHR {
 		if err := s.UpsertRhr(store.RhrRow{
 			Date: d.Date, RestingHR: d.RestingHR, RawJSON: rawString(d.RawJSON),
+		}); err != nil {
+			return errResult(s, source, err)
+		}
+		synced++
+	}
+	for _, d := range out.VO2Max {
+		if err := s.UpsertVo2max(store.Vo2maxRow{
+			Date: d.Date, Vo2max: d.VO2Max, RawJSON: rawString(d.RawJSON),
 		}); err != nil {
 			return errResult(s, source, err)
 		}
