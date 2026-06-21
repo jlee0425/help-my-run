@@ -46,6 +46,10 @@ class _FakeGarmin:
         self.calls.append(("get_stats", cdate))
         return {"restingHeartRate": 47}
 
+    def get_max_metrics(self, cdate):
+        self.calls.append(("get_max_metrics", cdate))
+        return {"userId": 1, "generic": {"calendarDate": cdate, "vo2MaxValue": 44.0}, "cycling": None}
+
 
 def test_client_delegates_sleep():
     fake = _FakeGarmin()
@@ -74,6 +78,14 @@ def test_client_delegates_stats():
     c = client.GarminClient(garmin=fake)
     assert c.get_stats("2026-06-15") == {"restingHeartRate": 47}
     assert ("get_stats", "2026-06-15") in fake.calls
+
+
+def test_get_max_metrics_delegates_1to1():
+    fake = _FakeGarmin()
+    c = client.GarminClient(fake)
+    out = c.get_max_metrics("2026-06-15")
+    assert fake.calls == [("get_max_metrics", "2026-06-15")]
+    assert out["generic"]["vo2MaxValue"] == 44.0
 
 
 # --------------------------------------------------------------------------
