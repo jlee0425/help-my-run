@@ -103,6 +103,10 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/today", h.today)
 		r.Post("/api/today/undo", h.undoToday)
 		r.Post("/api/agent/run", h.agentRun)
+
+		// M3.1
+		r.Get("/api/progress", h.progress)
+		r.Post("/api/progress/analyze", h.analyzeProgress)
 	})
 
 	return r
