@@ -43,6 +43,7 @@ def run_fetch(
     sleep = []
     hrv = []
     rhr = []
+    vo2max = []
 
     # Body Battery: one range call for the whole window.
     bb_entries = client.get_body_battery(since, until) or []
@@ -63,6 +64,10 @@ def run_fetch(
 
         rhr.append(normalize.normalize_rhr_day(cdate, client.get_stats(cdate)))
 
+        mm = normalize.normalize_vo2max_day(cdate, client.get_max_metrics(cdate))
+        if mm["vo2max"] is not None:  # omit no-data days
+            vo2max.append(mm)
+
         if i < len(dates) - 1:
             sleep_fn(_PER_DAY_DELAY_S)
 
@@ -74,4 +79,5 @@ def run_fetch(
         hrv=hrv,
         body_battery=body_battery,
         rhr=rhr,
+        vo2max=vo2max,
     )
