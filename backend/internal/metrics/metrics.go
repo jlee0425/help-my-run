@@ -25,9 +25,9 @@ type FitnessMetrics struct {
 	IsCutbackWeek      bool    `json:"is_cutback_week"`
 }
 
-// formatPace renders seconds-per-km as "M:SS/km" (zero-padded seconds).
+// FormatPace renders seconds-per-km as "M:SS/km" (zero-padded seconds).
 // Returns "" for non-positive input (no data).
-func formatPace(secPerKm float64) string {
+func FormatPace(secPerKm float64) string {
 	if secPerKm <= 0 {
 		return ""
 	}
@@ -44,11 +44,18 @@ var runTypes = map[string]bool{
 	"VirtualRun": true,
 }
 
-// isRun reports whether a Strava activity type counts toward running volume.
-func isRun(typ string) bool { return runTypes[typ] }
+// IsRun reports whether a Strava activity type counts toward running volume.
+func IsRun(typ string) bool { return runTypes[typ] }
 
-// parseStart parses an activity StartTime (RFC3339 UTC). ok=false if unparseable.
-func parseStart(startTime string) (time.Time, bool) {
+// Internal aliases so existing call sites in this package stay unchanged while
+// the exported names are reused by internal/progress (CONTRACTS §3.3).
+func formatPace(secPerKm float64) string    { return FormatPace(secPerKm) }
+func isRun(typ string) bool                 { return IsRun(typ) }
+func parseStart(s string) (time.Time, bool) { return ParseStart(s) }
+func median(sorted []float64) float64       { return Median(sorted) }
+
+// ParseStart parses an activity StartTime (RFC3339 UTC). ok=false if unparseable.
+func ParseStart(startTime string) (time.Time, bool) {
 	t, err := time.Parse(time.RFC3339, startTime)
 	if err != nil {
 		return time.Time{}, false
@@ -102,8 +109,8 @@ func acuteChronicRatio(acts []store.Activity, now time.Time) float64 {
 	return round2(acute / chronic)
 }
 
-// median returns the median of a sorted, non-empty slice.
-func median(sorted []float64) float64 {
+// Median returns the median of a sorted, non-empty slice.
+func Median(sorted []float64) float64 {
 	n := len(sorted)
 	if n == 0 {
 		return 0

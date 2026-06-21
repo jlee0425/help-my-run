@@ -473,3 +473,19 @@ func TestRecoveryTrendExported(t *testing.T) {
 		t.Errorf("RecoveryTrend(nil) = %q, want stable", got)
 	}
 }
+
+func TestExportedHelpersForProgress(t *testing.T) {
+	if !IsRun("Run") || IsRun("Ride") {
+		t.Errorf("IsRun broken: Run=%v Ride=%v", IsRun("Run"), IsRun("Ride"))
+	}
+	tm, ok := ParseStart("2026-06-21T07:00:00Z")
+	if !ok || tm.Year() != 2026 {
+		t.Errorf("ParseStart = %v ok=%v", tm, ok)
+	}
+	if got := Median([]float64{1, 2, 3}); got != 2 {
+		t.Errorf("Median([1,2,3]) = %v, want 2", got)
+	}
+	if got := FormatPace(360); got != "6:00/km" {
+		t.Errorf("FormatPace(360) = %q, want 6:00/km", got)
+	}
+}
