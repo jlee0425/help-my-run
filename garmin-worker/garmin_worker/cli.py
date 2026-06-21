@@ -81,6 +81,10 @@ _DRY_STATS_RAW = {
     "2026-06-14": {"restingHeartRate": 48, "totalSteps": 9000},
     "2026-06-15": {"restingHeartRate": 47, "totalSteps": 11000},
 }
+_DRY_VO2MAX_RAW = {
+    "2026-06-14": {"userId": 1, "generic": {"calendarDate": "2026-06-14", "vo2MaxValue": 51.0, "fitnessAge": 30}, "cycling": None},
+    "2026-06-15": {"userId": 1, "generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0, "fitnessAge": 30}, "cycling": None},
+}
 
 
 def _run_dry_fetch(since: str, until: str) -> dict:
@@ -89,6 +93,7 @@ def _run_dry_fetch(since: str, until: str) -> dict:
     hrv = [normalize.normalize_hrv_day(d, raw) for d, raw in sorted(_DRY_HRV_RAW.items())]
     body_battery = [normalize.normalize_body_battery_day(e["date"], e) for e in _DRY_BB_RANGE]
     rhr = [normalize.normalize_rhr_day(d, raw) for d, raw in sorted(_DRY_STATS_RAW.items())]
+    vo2max = [normalize.normalize_vo2max_day(d, raw) for d, raw in sorted(_DRY_VO2MAX_RAW.items())]
     return normalize.build_output(
         since=since,
         until=until,
@@ -97,6 +102,7 @@ def _run_dry_fetch(since: str, until: str) -> dict:
         hrv=hrv,
         body_battery=body_battery,
         rhr=rhr,
+        vo2max=vo2max,
     )
 
 
