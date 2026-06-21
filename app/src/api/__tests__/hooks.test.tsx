@@ -25,6 +25,8 @@ import {
   useUndoToday,
   useRunAgent,
   useRegisterPushToken,
+  useProgress,
+  useAnalyzeProgress,
 } from '../hooks';
 import type {
   Status,
@@ -38,6 +40,8 @@ import type {
   TodayBriefing,
   RunResult,
   PushRegisterRequest,
+  ProgressReport,
+  ProgressRead,
 } from '../types';
 
 const mockApiGet = apiGet as jest.MockedFunction<typeof apiGet>;
@@ -315,5 +319,42 @@ describe('useRegisterPushToken', () => {
     await act(async () => { result.current.mutate(body); });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockApiPost).toHaveBeenCalledWith('/api/push/register', body);
+  });
+});
+
+describe('useProgress', () => {
+  it('fetches /api/progress with default weeks 12', async () => {
+    const data: ProgressReport = {
+      weeks: 12,
+      generated_at: '2026-06-21T07:00:00Z',
+      enough_data: true,
+      signals: [],
+    };
+    mockApiGet.mockResolvedValue(data);
+    const { result } = await renderHook(() => useProgress(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/progress?weeks=12');
+    expect(result.current.data).toEqual(data);
+  });
+
+  it('fetches /api/progress with an explicit weeks value', async () => {
+    mockApiGet.mockResolvedValue({
+      weeks: 8, generated_at: '2026-06-21T07:00:00Z', enough_data: false, signals: [],
+    });
+    const { result } = await renderHook(() => useProgress(8), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/progress?weeks=8');
+  });
+});
+
+describe('useAnalyzeProgress', () => {
+  it('POSTs /api/progress/analyze with the weeks body and returns the read', async () => {
+    const read: ProgressRead = { text: 'Your engine is improving.', source: 'ai' };
+    mockApiPost.mockResolvedValue(read);
+    const { result } = await renderHook(() => useAnalyzeProgress(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate({ weeks: 12 }); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPost).toHaveBeenCalledWith('/api/progress/analyze', { weeks: 12 });
+    expect(result.current.data).toEqual(read);
   });
 });

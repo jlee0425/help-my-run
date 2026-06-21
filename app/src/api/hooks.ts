@@ -19,6 +19,8 @@ import type {
   RunResult,
   PushRegisterRequest,
   PushRegisterResponse,
+  ProgressReport,
+  ProgressRead,
 } from './types';
 
 export function useStatus() {
@@ -163,5 +165,19 @@ export function useRegisterPushToken() {
   return useMutation({
     mutationFn: (body: PushRegisterRequest) =>
       apiPost<PushRegisterResponse>('/api/push/register', body),
+  });
+}
+
+export function useProgress(weeks = 12) {
+  return useQuery({
+    queryKey: ['progress', weeks],
+    queryFn: () => apiGet<ProgressReport>(`/api/progress?weeks=${weeks}`),
+  });
+}
+
+export function useAnalyzeProgress() {
+  return useMutation({
+    mutationFn: (body: { weeks?: number }) =>
+      apiPost<ProgressRead>('/api/progress/analyze', body),
   });
 }
