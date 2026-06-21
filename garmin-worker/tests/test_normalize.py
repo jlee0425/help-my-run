@@ -168,6 +168,51 @@ def test_normalize_rhr_day_none_raw_yields_null():
 
 
 # --------------------------------------------------------------------------
+# normalize_vo2max_day
+# get_max_metrics(date) hits the maxmet daily-range endpoint, which returns a
+# one-element LIST: raw[0]["generic"]["vo2MaxValue"] (a plain dict is also
+# tolerated for fixtures). raw_json preserves the ORIGINAL payload.
+# --------------------------------------------------------------------------
+def test_normalize_vo2max_day_dict_shape():
+    # Dict-shaped fixture (defensive: type hint says dict).
+    raw = load("raw_max_metrics_2026-06-15.json")
+    out = normalize.normalize_vo2max_day("2026-06-15", raw)
+    assert out == {
+        "date": "2026-06-15",
+        "vo2max": 52.0,
+        "raw_json": raw,
+    }
+    assert list(out.keys()) == ["date", "vo2max", "raw_json"]
+
+
+def test_normalize_vo2max_day_list_shape_real_endpoint():
+    # Real endpoint shape: a one-element list; raw_json keeps the list intact.
+    raw = [{"generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0}, "cycling": None}]
+    out = normalize.normalize_vo2max_day("2026-06-15", raw)
+    assert out["vo2max"] == 52.0  # same value as the dict-shaped case
+    assert out["raw_json"] == raw  # original list payload preserved
+
+
+def test_normalize_vo2max_day_empty_list_yields_null():
+    out = normalize.normalize_vo2max_day("2026-06-15", [])
+    assert out["vo2max"] is None
+    assert out["raw_json"] == []  # original empty list preserved
+
+
+def test_normalize_vo2max_day_missing_generic_null():
+    raw = {"userId": 1, "generic": None, "cycling": None}
+    out = normalize.normalize_vo2max_day("2026-06-15", raw)
+    assert out["vo2max"] is None
+    assert out["raw_json"] == raw
+
+
+def test_normalize_vo2max_day_none_raw_yields_empty_dict():
+    out = normalize.normalize_vo2max_day("2026-06-15", None)
+    assert out["vo2max"] is None
+    assert out["raw_json"] == {}
+
+
+# --------------------------------------------------------------------------
 # build_output  (assembles the full §2.1 top-level object)
 # --------------------------------------------------------------------------
 def test_build_output_top_level_shape():
@@ -179,10 +224,11 @@ def test_build_output_top_level_shape():
         hrv=[],
         body_battery=[{"date": "2026-06-14"}, {"date": "2026-06-15"}],
         rhr=[{"date": "2026-06-15"}],
+        vo2max=[{"date": "2026-06-15"}],
     )
     assert list(out.keys()) == [
         "since", "until", "fetched_at",
-        "sleep", "hrv", "body_battery", "rhr",
+        "sleep", "hrv", "body_battery", "rhr", "vo2max",
     ]
     assert out["since"] == "2026-06-14"
     assert out["until"] == "2026-06-15"
@@ -191,13 +237,14 @@ def test_build_output_top_level_shape():
     assert len(out["body_battery"]) == 2
     assert out["sleep"][0]["date"] == "2026-06-14"
     assert out["rhr"][0]["date"] == "2026-06-15"
+    assert out["vo2max"][0]["date"] == "2026-06-15"
 
 
 def test_build_output_full_serializes_to_json():
     out = normalize.build_output(
         since="2026-06-15", until="2026-06-15",
         fetched_at="2026-06-15T05:00:12Z",
-        sleep=[], hrv=[], body_battery=[], rhr=[],
+        sleep=[], hrv=[], body_battery=[], rhr=[], vo2max=[],
     )
     # must be JSON-serializable (no datetime / non-primitive leaks)
     text = json.dumps(out)

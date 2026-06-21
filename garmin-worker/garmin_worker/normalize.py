@@ -102,6 +102,28 @@ def normalize_rhr_day(date: str, raw: Optional[dict]) -> dict:
     }
 
 
+def normalize_vo2max_day(date: str, raw) -> dict:
+    """Map get_max_metrics(date) -> Vo2maxDay (CONTRACTS §2.2).
+
+    get_max_metrics hits the maxmet DAILY RANGE endpoint
+    (`/{cdate}/{cdate}`) and returns the raw JSON with no transform. On
+    the real endpoint this is a one-element LIST whose `[0].generic`
+    holds the metric (the library's `dict` type hint is wrong); fixtures
+    may also be a plain dict. Unwrap the list first, then walk
+    `generic.vo2MaxValue`. The ORIGINAL payload (list or dict) is
+    preserved in `raw_json`.
+    """
+    payload = raw
+    if isinstance(payload, list):
+        payload = payload[0] if payload else None
+    val = _get(payload, "generic", "vo2MaxValue")
+    return {
+        "date": date,
+        "vo2max": val,
+        "raw_json": raw if raw is not None else {},
+    }
+
+
 def build_output(
     *,
     since: str,
@@ -111,6 +133,7 @@ def build_output(
     hrv: list,
     body_battery: list,
     rhr: list,
+    vo2max: list,
 ) -> dict:
     """Assemble the full worker stdout object (CONTRACTS §2.1).
 
@@ -124,4 +147,5 @@ def build_output(
         "hrv": hrv,
         "body_battery": body_battery,
         "rhr": rhr,
+        "vo2max": vo2max,
     }
