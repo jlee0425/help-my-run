@@ -5,8 +5,10 @@ package progress
 
 import (
 	"math"
+	"sort"
 	"time"
 
+	"help-my-run/backend/internal/metrics"
 	"help-my-run/backend/internal/store"
 )
 
@@ -139,5 +141,150 @@ func summarize(series []*float64, lowerIsBetter, isPace bool) (cur, base, delta 
 	}
 }
 
-// ensure store is referenced (used by ComputeProgress in a later task).
-var _ = store.Activity{}
+// inBucket reports whether t falls in the half-open bucket (start, end].
+func inBucket(t time.Time, b weekBucket) bool {
+	return t.After(b.start) && !t.After(b.end)
+}
+
+// refHRBand returns the reference-HR band (Zone2 ceiling or documented default).
+func refHRBand(profile store.AthleteProfile) (lo, hi float64) {
+	ref := defaultRefHRBpm
+	if profile.Zone2CeilingBpm != nil {
+		ref = float64(*profile.Zone2CeilingBpm)
+	}
+	return ref - refHRBandBpm, ref + refHRBandBpm
+}
+
+// paceAtHRSeries builds the headline weekly-median pace (sec/km) of in-band runs
+// per bucket. A bucket with no qualifying in-band run -> nil (gap). Lower=better.
+func paceAtHRSeries(acts []store.Activity, profile store.AthleteProfile, buckets []weekBucket) []*float64 {
+	lo, hi := refHRBand(profile)
+	out := make([]*float64, len(buckets))
+	for bi, b := range buckets {
+		var paces []float64
+		for _, a := range acts {
+			if !metrics.IsRun(a.Type) || a.DistanceM <= 0 || a.MovingTimeS <= 0 || a.AvgHR == nil {
+				continue
+			}
+			if *a.AvgHR < lo || *a.AvgHR > hi {
+				continue
+			}
+			t, ok := metrics.ParseStart(a.StartTime)
+			if !ok || !inBucket(t, b) {
+				continue
+			}
+			paces = append(paces, float64(a.MovingTimeS)/(a.DistanceM/1000.0))
+		}
+		if len(paces) == 0 {
+			continue // gap
+		}
+		sort.Float64s(paces)
+		m := metrics.Median(paces)
+		out[bi] = &m
+	}
+	return out
+}
+
+// weeklyLoadSeries builds per-bucket running km. A bucket with zero run km -> 0.0
+// (not a gap: zero IS data).
+func weeklyLoadSeries(acts []store.Activity, buckets []weekBucket) []*float64 {
+	out := make([]*float64, len(buckets))
+	for bi, b := range buckets {
+		var km float64
+		for _, a := range acts {
+			if !metrics.IsRun(a.Type) {
+				continue
+			}
+			t, ok := metrics.ParseStart(a.StartTime)
+			if !ok || !inBucket(t, b) {
+				continue
+			}
+			km += a.DistanceM / 1000.0
+		}
+		v := km
+		out[bi] = &v
+	}
+	return out
+}
+
+// rhrSeries: per-bucket mean of in-bucket non-nil resting HR. Empty -> nil (gap).
+func rhrSeries(rec []store.RecoveryDay, buckets []weekBucket) []*float64 {
+	return recoveryMeanSeries(rec, buckets, func(d store.RecoveryDay) *int64 {
+		if d.RHR == nil {
+			return nil
+		}
+		return d.RHR.RestingHR
+	})
+}
+
+// hrvSeries: per-bucket mean of in-bucket non-nil HRV last-night avg. Empty -> nil.
+func hrvSeries(rec []store.RecoveryDay, buckets []weekBucket) []*float64 {
+	return recoveryMeanSeries(rec, buckets, func(d store.RecoveryDay) *int64 {
+		if d.HRV == nil {
+			return nil
+		}
+		return d.HRV.LastNightAvgMs
+	})
+}
+
+// recoveryMeanSeries averages pick(d) over in-bucket recovery days (date is a
+// YYYY-MM-DD string, bucketed at midnight UTC). Empty bucket -> nil (gap).
+func recoveryMeanSeries(rec []store.RecoveryDay, buckets []weekBucket, pick func(store.RecoveryDay) *int64) []*float64 {
+	out := make([]*float64, len(buckets))
+	for bi, b := range buckets {
+		var sum float64
+		var n int
+		for _, d := range rec {
+			t, ok := parseDate(d.Date)
+			if !ok || !inBucket(t, b) {
+				continue
+			}
+			if v := pick(d); v != nil {
+				sum += float64(*v)
+				n++
+			}
+		}
+		if n == 0 {
+			continue
+		}
+		m := sum / float64(n)
+		out[bi] = &m
+	}
+	return out
+}
+
+// vo2maxSeries: latest (most-recent dated) non-nil VO2max reading within each
+// bucket. pts may be most-recent-first; we track the max date seen per bucket.
+func vo2maxSeries(pts []store.Vo2maxPoint, buckets []weekBucket) []*float64 {
+	out := make([]*float64, len(buckets))
+	bestDate := make([]string, len(buckets))
+	for _, p := range pts {
+		if p.Vo2max == nil {
+			continue
+		}
+		t, ok := parseDate(p.Date)
+		if !ok {
+			continue
+		}
+		for bi, b := range buckets {
+			if !inBucket(t, b) {
+				continue
+			}
+			if p.Date > bestDate[bi] { // lexical compare works for YYYY-MM-DD
+				bestDate[bi] = p.Date
+				v := *p.Vo2max
+				out[bi] = &v
+			}
+		}
+	}
+	return out
+}
+
+// parseDate parses a YYYY-MM-DD store date at 00:00:00 UTC.
+func parseDate(date string) (time.Time, bool) {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}

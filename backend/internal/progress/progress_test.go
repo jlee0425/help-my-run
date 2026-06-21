@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"help-my-run/backend/internal/store"
 )
 
 func f64(v float64) *float64 { return &v }
@@ -157,5 +159,116 @@ func TestSummarizePaceEpsDeadband(t *testing.T) {
 	_, _, _, dir = summarize([]*float64{f64(350), f64(348)}, true, true)
 	if dir != DirectionDown {
 		t.Errorf("dir = %q, want down", dir)
+	}
+}
+
+// mkRun builds a Strava run activity for fixtures.
+func mkRun(start string, distM float64, movingS int64, avgHR *float64) store.Activity {
+	return store.Activity{Type: "Run", StartTime: start, DistanceM: distM, MovingTimeS: movingS, AvgHR: avgHR}
+}
+
+func TestPaceAtHRSeriesBandAndMedianAndGap(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	hr := func(v float64) *float64 { return &v }
+	z2 := int64(145) // band [140,150]
+	prof := store.AthleteProfile{Zone2CeilingBpm: &z2}
+	acts := []store.Activity{
+		// wk2: in-band, 5km @ 1750s (350s/km) and 5km @ 1650s (330s/km) -> median 340
+		mkRun("2026-06-20T07:00:00Z", 5000, 1750, hr(145)),
+		mkRun("2026-06-19T07:00:00Z", 5000, 1650, hr(148)),
+		mkRun("2026-06-18T07:00:00Z", 5000, 1500, hr(120)), // out of band -> ignored
+		// wk0 (oldest): one in-band 5km @ 1800s (360s/km)
+		// (date must land in wk0 = (2026-05-31, 2026-06-07]; the plan's
+		// 2026-06-08 fixture actually fell in wk1 — corrected to 2026-06-05)
+		mkRun("2026-06-05T07:00:00Z", 5000, 1800, hr(143)),
+		// wk1: NO in-band run -> gap (nil)
+		mkRun("2026-06-14T07:00:00Z", 5000, 1500, hr(160)), // out of band
+	}
+	got := paceAtHRSeries(acts, prof, weekBuckets(3, now))
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	if got[0] == nil || *got[0] != 360 {
+		t.Errorf("wk0 = %v, want 360", got[0])
+	}
+	if got[1] != nil {
+		t.Errorf("wk1 = %v, want nil (gap, no in-band run)", got[1])
+	}
+	if got[2] == nil || *got[2] != 340 {
+		t.Errorf("wk2 = %v, want median 340", got[2])
+	}
+}
+
+func TestPaceAtHRSeriesDefaultRefHRWhenProfileNil(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	hr := func(v float64) *float64 { return &v }
+	prof := store.AthleteProfile{} // nil Zone2CeilingBpm -> defaultRefHRBpm=145, band [140,150]
+	acts := []store.Activity{
+		mkRun("2026-06-20T07:00:00Z", 5000, 1750, hr(146)), // in default band
+		mkRun("2026-06-19T07:00:00Z", 5000, 1500, hr(120)), // out
+	}
+	got := paceAtHRSeries(acts, prof, weekBuckets(1, now))
+	if got[0] == nil || *got[0] != 350 {
+		t.Errorf("wk0 = %v, want 350 (default ref HR band)", got[0])
+	}
+}
+
+func TestWeeklyLoadSeries(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	acts := []store.Activity{
+		mkRun("2026-06-20T07:00:00Z", 10000, 3000, nil), // wk1: 10km
+		mkRun("2026-06-19T07:00:00Z", 5000, 1500, nil),  // wk1: +5km = 15km
+		mkRun("2026-06-12T07:00:00Z", 8000, 2400, nil),  // wk0: 8km
+	}
+	got := weeklyLoadSeries(acts, weekBuckets(2, now))
+	if got[0] == nil || *got[0] != 8 {
+		t.Errorf("wk0 = %v, want 8", got[0])
+	}
+	if got[1] == nil || *got[1] != 15 {
+		t.Errorf("wk1 = %v, want 15", got[1])
+	}
+}
+
+func TestRecoverySeriesMeanAndGap(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	i := func(v int64) *int64 { return &v }
+	// recovery is most-recent-first (as ListRecovery returns).
+	rec := []store.RecoveryDay{
+		{Date: "2026-06-20", RHR: &store.RhrFields{RestingHR: i(48)}, HRV: &store.HrvFields{LastNightAvgMs: i(52)}},
+		{Date: "2026-06-19", RHR: &store.RhrFields{RestingHR: i(50)}, HRV: &store.HrvFields{LastNightAvgMs: i(50)}},
+		// wk0: a single RHR day; no HRV -> HRV gap that week
+		{Date: "2026-06-12", RHR: &store.RhrFields{RestingHR: i(52)}},
+	}
+	rhr := rhrSeries(rec, weekBuckets(2, now))
+	if rhr[0] == nil || *rhr[0] != 52 {
+		t.Errorf("rhr wk0 = %v, want 52", rhr[0])
+	}
+	if rhr[1] == nil || *rhr[1] != 49 { // mean(48,50)
+		t.Errorf("rhr wk1 = %v, want 49", rhr[1])
+	}
+	hrv := hrvSeries(rec, weekBuckets(2, now))
+	if hrv[0] != nil {
+		t.Errorf("hrv wk0 = %v, want nil (no HRV that week)", hrv[0])
+	}
+	if hrv[1] == nil || *hrv[1] != 51 { // mean(52,50)
+		t.Errorf("hrv wk1 = %v, want 51", hrv[1])
+	}
+}
+
+func TestVo2maxSeriesLastInBucket(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	f := func(v float64) *float64 { return &v }
+	// ListVo2max returns most-recent-first; date-only strings.
+	pts := []store.Vo2maxPoint{
+		{Date: "2026-06-20", Vo2max: f(52)},
+		{Date: "2026-06-18", Vo2max: f(51)}, // same wk1 but earlier -> last (latest) is 52
+		{Date: "2026-06-10", Vo2max: f(50)}, // wk0
+	}
+	got := vo2maxSeries(pts, weekBuckets(2, now))
+	if got[0] == nil || *got[0] != 50 {
+		t.Errorf("wk0 = %v, want 50", got[0])
+	}
+	if got[1] == nil || *got[1] != 52 {
+		t.Errorf("wk1 = %v, want 52 (latest in bucket)", got[1])
 	}
 }
