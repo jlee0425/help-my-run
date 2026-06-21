@@ -29,7 +29,7 @@ func New(s *store.Store, c *llm.Client, model string) *Engine {
 // ending at now (UTC). Reads activities, recovery, vo2max, and the profile, then
 // delegates to the pure ComputeProgress.
 func (e *Engine) Report(ctx context.Context, weeks int) (ProgressReport, error) {
-	acts, err := e.store.ListActivities(500)
+	acts, err := e.store.ListActivities(activityLimit(weeks))
 	if err != nil {
 		return ProgressReport{}, err
 	}
@@ -46,6 +46,20 @@ func (e *Engine) Report(ctx context.Context, weeks int) (ProgressReport, error) 
 		return ProgressReport{}, err
 	}
 	return ComputeProgress(acts, rec, vo2, prof, weeks, time.Now().UTC()), nil
+}
+
+// activityLimit sizes the ListActivities cap to the requested window so the
+// deepest weeks are never silently truncated. A high-volume athlete (runs +
+// CrossFit) can log ~2 activities/day, so we allow weeks*14 (generous); a 200
+// floor (matching the codebase's existing list cap) keeps short windows pulling
+// enough baseline points. ListActivities is most-recent-first, so an undersized
+// cap would drop the OLDEST weeks — exactly the baseline the trends need.
+func activityLimit(weeks int) int {
+	limit := weeks * 14
+	if limit < 200 {
+		limit = 200
+	}
+	return limit
 }
 
 // analyzeArgs builds the claude -p argv for the progress read (mirrors
