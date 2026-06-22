@@ -225,11 +225,13 @@ def test_build_output_top_level_shape():
         body_battery=[{"date": "2026-06-14"}, {"date": "2026-06-15"}],
         rhr=[{"date": "2026-06-15"}],
         vo2max=[{"date": "2026-06-15"}],
+        activities=[],
     )
     assert list(out.keys()) == [
         "since", "until", "fetched_at",
-        "sleep", "hrv", "body_battery", "rhr", "vo2max",
+        "sleep", "hrv", "body_battery", "rhr", "vo2max", "activities",
     ]
+    assert out["activities"] == []
     assert out["since"] == "2026-06-14"
     assert out["until"] == "2026-06-15"
     assert out["fetched_at"] == "2026-06-15T05:00:12Z"
@@ -244,7 +246,7 @@ def test_build_output_full_serializes_to_json():
     out = normalize.build_output(
         since="2026-06-15", until="2026-06-15",
         fetched_at="2026-06-15T05:00:12Z",
-        sleep=[], hrv=[], body_battery=[], rhr=[], vo2max=[],
+        sleep=[], hrv=[], body_battery=[], rhr=[], vo2max=[], activities=[],
     )
     # must be JSON-serializable (no datetime / non-primitive leaks)
     text = json.dumps(out)
