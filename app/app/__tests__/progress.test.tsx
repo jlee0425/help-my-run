@@ -19,6 +19,12 @@ const progress: ProgressReport = {
       direction: 'up', lower_is_better: false,
       series: [50, 50, 51, null, 51, 52, 52],
     },
+    {
+      key: 'decoupling', label: 'Decoupling', unit: '%',
+      current: 4.2, baseline: 6.5, delta_abs: -2.3,
+      direction: 'down', lower_is_better: true,
+      series: [6.5, null, 6.0, 5.4, null, 4.8, 4.2],
+    },
   ],
 };
 
@@ -113,6 +119,20 @@ describe('ProgressScreen', () => {
   it('does NOT render the empty state on the happy path', async () => {
     const { queryByTestId } = await render(<ProgressScreen />);
     expect(queryByTestId('progress-empty')).toBeNull();
+  });
+
+  it('auto-renders the decoupling card (generic TrendCard, lower_is_better down = improving)', async () => {
+    const { getByTestId } = await render(<ProgressScreen />);
+    expect(getByTestId('progress-card-decoupling')).toBeTruthy();
+    expect(getByTestId('progress-arrow-decoupling').props.children).toBe('↓');
+    expect(getByTestId('progress-spark-decoupling').props.children).toHaveLength(7);
+    const flat = JSON.stringify(
+      getByTestId('progress-card-decoupling').props.children,
+      (k, v) => (k === '_owner' || k === '_store' ? undefined : v),
+    );
+    expect(flat).toContain('Decoupling');
+    expect(flat).toContain('4.2');
+    expect(flat).toContain('%');
   });
 });
 
