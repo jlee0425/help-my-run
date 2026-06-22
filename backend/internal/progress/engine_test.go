@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/store"
@@ -168,19 +169,37 @@ func TestActivityLimitSizesToWindow(t *testing.T) {
 
 func TestReportIncludesDecouplingSignal(t *testing.T) {
 	s := newProgressStore(t)
-	seedTrendData(t, s) // activities 1 & 2 exist (2026-06-15, 2026-04-06)
+	seedTrendData(t, s) // activities 1 & 2 exist
+	// Report buckets decoupling by each activity's start_time against
+	// time.Now().UTC() (Report has no clock injection), so re-seed the two
+	// activities with now-relative dates that always sit inside a 12-week
+	// window. This keeps the windowed >=2 assertion time-stable instead of
+	// decaying as the hardcoded seed dates age out of the wall-clock window.
+	now := time.Now().UTC()
+	startNew := now.AddDate(0, 0, -3).Format(time.RFC3339)  // newest week
+	startOld := now.AddDate(0, 0, -40).Format(time.RFC3339) // ~6 weeks back, still in window
+	_ = s.UpsertActivity(store.Activity{
+		StravaID: 1, Name: "easy", Type: "Run",
+		StartTime: startNew, DistanceM: 10000, MovingTimeS: 3300,
+		AvgHR: fp(145), RawJSON: "{}",
+	})
+	_ = s.UpsertActivity(store.Activity{
+		StravaID: 2, Name: "easy2", Type: "Run",
+		StartTime: startOld, DistanceM: 10000, MovingTimeS: 3500,
+		AvgHR: fp(145), RawJSON: "{}",
+	})
 	dp1, dp2 := fp(4.0), fp(7.0)
 	if err := s.UpsertStreamAnalysis(store.StreamAnalysisRow{
 		ActivityID: 1, TimeInZoneJSON: "[]", DecouplingPct: dp1,
 		ZonesJSON: `{"z1_hi":116,"z2_hi":145,"z3_hi":157.5,"z4_hi":170}`,
-		HasHR:     true, ComputedAt: "2026-06-15T07:00:00Z",
+		HasHR:     true, ComputedAt: startNew,
 	}); err != nil {
 		t.Fatalf("upsert analysis 1: %v", err)
 	}
 	if err := s.UpsertStreamAnalysis(store.StreamAnalysisRow{
 		ActivityID: 2, TimeInZoneJSON: "[]", DecouplingPct: dp2,
 		ZonesJSON: `{"z1_hi":116,"z2_hi":145,"z3_hi":157.5,"z4_hi":170}`,
-		HasHR:     true, ComputedAt: "2026-04-06T07:00:00Z",
+		HasHR:     true, ComputedAt: startOld,
 	}); err != nil {
 		t.Fatalf("upsert analysis 2: %v", err)
 	}
@@ -199,11 +218,16 @@ func TestReportIncludesDecouplingSignal(t *testing.T) {
 	if dec == nil {
 		t.Fatal("decoupling signal absent from report")
 	}
-	if dec.Unit != "%" || !dec.LowerIsBetter {
-		t.Errorf("decoupling card = %+v, want unit=%% lowerIsBetter=true", dec)
+	if dec.Key != SignalDecoupling || dec.Unit != "%" || !dec.LowerIsBetter {
+		t.Errorf("decoupling card = %+v, want key=decoupling unit=%% lowerIsBetter=true", dec)
 	}
 	if countNonNil(dec.Series) < 2 {
 		t.Errorf("decoupling series non-nil = %d, want >=2 (two weeks)", countNonNil(dec.Series))
+	}
+	// Series is oldest-first; the most-recent non-nil value must be the newest
+	// seeded decoupling (4.0) — robust regardless of how many older weeks remain.
+	if dec.Current == nil || *dec.Current != 4.0 {
+		t.Errorf("decoupling current = %v, want 4.0 (newest week)", dec.Current)
 	}
 }
 
