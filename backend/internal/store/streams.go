@@ -159,3 +159,100 @@ func (s *Store) ListStreamAnalyses(limit int) ([]StreamAnalysisRow, error) {
 	}
 	return out, rows.Err()
 }
+
+// StreamFetchLog is the single-row (source='strava') trickle state for the
+// recent-window stream backfill. Mirrors SyncLog conventions; nullable TEXT
+// fields are *string.
+type StreamFetchLog struct {
+	Source           string
+	CursorTime       *string // oldest start_time reached in the recent window
+	LastRunAt        *string // RFC3339 UTC of last trickle attempt
+	LastFetched      int64   // count fetched in last run
+	TotalFetched     int64   // cumulative streams fetched
+	Status           string  // "ok" | "error" | "rate_limited" | "never"
+	Error            *string // non-nil only on error/rate_limited
+	RateLimitedUntil *string // RFC3339 UTC; trickle resumes after this
+}
+
+// GetStreamFetchLog returns the single stream_fetch_log row (source='strava'),
+// or ErrNotFound if the seed is somehow absent.
+func (s *Store) GetStreamFetchLog() (StreamFetchLog, error) {
+	var fl StreamFetchLog
+	var cursor, lastRun, errMsg, rlUntil sql.NullString
+	err := s.DB.QueryRow(`
+		SELECT source, cursor_time, last_run_at, last_fetched, total_fetched,
+		       status, error, rate_limited_until
+		FROM stream_fetch_log WHERE source = 'strava'`).
+		Scan(&fl.Source, &cursor, &lastRun, &fl.LastFetched, &fl.TotalFetched,
+			&fl.Status, &errMsg, &rlUntil)
+	if errors.Is(err, sql.ErrNoRows) {
+		return StreamFetchLog{}, ErrNotFound
+	}
+	if err != nil {
+		return StreamFetchLog{}, err
+	}
+	if cursor.Valid {
+		fl.CursorTime = &cursor.String
+	}
+	if lastRun.Valid {
+		fl.LastRunAt = &lastRun.String
+	}
+	if errMsg.Valid {
+		fl.Error = &errMsg.String
+	}
+	if rlUntil.Valid {
+		fl.RateLimitedUntil = &rlUntil.String
+	}
+	return fl, nil
+}
+
+// UpdateStreamFetchLog upserts the single stream_fetch_log row.
+func (s *Store) UpdateStreamFetchLog(fl StreamFetchLog) error {
+	if fl.Source == "" {
+		fl.Source = "strava"
+	}
+	_, err := s.DB.Exec(`
+		INSERT INTO stream_fetch_log (
+			source, cursor_time, last_run_at, last_fetched, total_fetched,
+			status, error, rate_limited_until
+		) VALUES (?,?,?,?,?,?,?,?)
+		ON CONFLICT(source) DO UPDATE SET
+			cursor_time        = excluded.cursor_time,
+			last_run_at        = excluded.last_run_at,
+			last_fetched       = excluded.last_fetched,
+			total_fetched      = excluded.total_fetched,
+			status             = excluded.status,
+			error              = excluded.error,
+			rate_limited_until = excluded.rate_limited_until`,
+		fl.Source, fl.CursorTime, fl.LastRunAt, fl.LastFetched, fl.TotalFetched,
+		fl.Status, fl.Error, fl.RateLimitedUntil)
+	return err
+}
+
+// ListRecentRunsWithoutStream returns up to limit run ids whose start_time is
+// >= sinceISO and that have NO activity_streams row, most-recent-first. Used by
+// the recent-window trickle.
+func (s *Store) ListRecentRunsWithoutStream(sinceISO string, limit int) ([]int64, error) {
+	rows, err := s.DB.Query(`
+		SELECT a.strava_id
+		FROM activities a
+		LEFT JOIN activity_streams st ON st.activity_id = a.strava_id
+		WHERE st.activity_id IS NULL
+		  AND a.type = 'Run'
+		  AND a.start_time >= ?
+		ORDER BY a.start_time DESC
+		LIMIT ?`, sinceISO, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

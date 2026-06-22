@@ -179,3 +179,81 @@ func TestStreamAnalysisRoundTrip(t *testing.T) {
 		t.Errorf("ListStreamAnalyses(1) = %+v, want single [100]", one)
 	}
 }
+
+func TestStreamFetchLogGetAndUpdate(t *testing.T) {
+	s := newTestStore(t)
+
+	// Seeded by migration 00006.
+	fl, err := s.GetStreamFetchLog()
+	if err != nil {
+		t.Fatalf("GetStreamFetchLog seed = %v", err)
+	}
+	if fl.Source != "strava" || fl.Status != "never" {
+		t.Errorf("seed = %+v, want source=strava status=never", fl)
+	}
+	if fl.LastFetched != 0 || fl.TotalFetched != 0 {
+		t.Errorf("seed counters = (%d,%d), want (0,0)", fl.LastFetched, fl.TotalFetched)
+	}
+	if fl.CursorTime != nil || fl.LastRunAt != nil || fl.Error != nil || fl.RateLimitedUntil != nil {
+		t.Errorf("seed nullable fields = %+v, want all nil", fl)
+	}
+
+	// OK update with counters + cursor.
+	cursor := "2026-04-01T06:00:00Z"
+	runAt := "2026-06-22T05:00:00Z"
+	if err := s.UpdateStreamFetchLog(StreamFetchLog{
+		Source: "strava", CursorTime: &cursor, LastRunAt: &runAt,
+		LastFetched: 7, TotalFetched: 42, Status: "ok", Error: nil, RateLimitedUntil: nil,
+	}); err != nil {
+		t.Fatalf("UpdateStreamFetchLog ok = %v", err)
+	}
+	got, _ := s.GetStreamFetchLog()
+	if got.Status != "ok" || got.LastFetched != 7 || got.TotalFetched != 42 {
+		t.Errorf("after ok update = %+v, want status=ok last=7 total=42", got)
+	}
+	if got.CursorTime == nil || *got.CursorTime != cursor {
+		t.Errorf("CursorTime = %v, want %s", got.CursorTime, cursor)
+	}
+
+	// rate_limited update: error + rate_limited_until set.
+	rlErr := "strava 429"
+	until := "2026-06-22T05:15:00Z"
+	if err := s.UpdateStreamFetchLog(StreamFetchLog{
+		Source: "strava", CursorTime: &cursor, LastRunAt: &runAt,
+		LastFetched: 0, TotalFetched: 42, Status: "rate_limited",
+		Error: &rlErr, RateLimitedUntil: &until,
+	}); err != nil {
+		t.Fatalf("UpdateStreamFetchLog rate_limited = %v", err)
+	}
+	rl, _ := s.GetStreamFetchLog()
+	if rl.Status != "rate_limited" || rl.Error == nil || *rl.Error != rlErr {
+		t.Errorf("rate_limited = %+v, want status=rate_limited error=%q", rl, rlErr)
+	}
+	if rl.RateLimitedUntil == nil || *rl.RateLimitedUntil != until {
+		t.Errorf("RateLimitedUntil = %v, want %s", rl.RateLimitedUntil, until)
+	}
+
+	// Single-row table: update never inserts a second row.
+	var n int
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM stream_fetch_log`).Scan(&n)
+	if n != 1 {
+		t.Errorf("stream_fetch_log row count = %d, want 1", n)
+	}
+}
+
+func TestListRecentRunsWithoutStream(t *testing.T) {
+	s := newTestStore(t)
+	seedActivity(t, s, 1, "2026-06-21T06:00:00Z") // recent, no stream -> included
+	seedActivity(t, s, 2, "2026-06-20T06:00:00Z") // recent, HAS stream -> excluded
+	seedActivity(t, s, 3, "2026-01-01T06:00:00Z") // too old -> excluded
+	if err := s.UpsertActivityStream(ActivityStream{ActivityID: 2, Source: "strava", SeriesGz: []byte{1}}); err != nil {
+		t.Fatalf("seed stream: %v", err)
+	}
+	ids, err := s.ListRecentRunsWithoutStream("2026-04-01T00:00:00Z", 10)
+	if err != nil {
+		t.Fatalf("ListRecentRunsWithoutStream: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != 1 {
+		t.Errorf("ids = %v, want [1] (2 has stream, 3 too old)", ids)
+	}
+}
