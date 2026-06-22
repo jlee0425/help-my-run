@@ -19,6 +19,7 @@ const (
 	SignalRestingHR   = "resting_hr"   // garmin_rhr
 	SignalHRVBaseline = "hrv_baseline" // garmin_hrv last-night avg ms
 	SignalWeeklyLoad  = "weekly_load"  // weekly running km (M1 metrics)
+	SignalDecoupling  = "decoupling"   // per-run Pa:HR drift %, weekly-median over the window
 )
 
 // Window constants (CONTRACTS §3.3).
@@ -207,6 +208,39 @@ func weeklyLoadSeries(acts []store.Activity, buckets []weekBucket) []*float64 {
 	return out
 }
 
+// StreamAnalysisPoint is the minimal progress input: a run's start_time +
+// decoupling. nil DecouplingPct (no HR / not computable) is skipped.
+type StreamAnalysisPoint struct {
+	StartTime     string   // activity start_time (RFC3339), bucketed via metrics.ParseStart
+	DecouplingPct *float64 // nil -> skipped
+}
+
+// decouplingSeries builds per-bucket median decoupling % from stream analyses.
+// A bucket with no qualifying run -> nil (gap). Lower = better.
+func decouplingSeries(analyses []StreamAnalysisPoint, buckets []weekBucket) []*float64 {
+	out := make([]*float64, len(buckets))
+	for bi, b := range buckets {
+		var vals []float64
+		for _, p := range analyses {
+			if p.DecouplingPct == nil {
+				continue
+			}
+			t, ok := metrics.ParseStart(p.StartTime)
+			if !ok || !inBucket(t, b) {
+				continue
+			}
+			vals = append(vals, *p.DecouplingPct)
+		}
+		if len(vals) == 0 {
+			continue // gap
+		}
+		sort.Float64s(vals)
+		m := metrics.Median(vals)
+		out[bi] = &m
+	}
+	return out
+}
+
 // rhrSeries: per-bucket mean of in-bucket non-nil resting HR. Empty -> nil (gap).
 func rhrSeries(rec []store.RecoveryDay, buckets []weekBucket) []*float64 {
 	return recoveryMeanSeries(rec, buckets, func(d store.RecoveryDay) *int64 {
@@ -303,6 +337,7 @@ var signalMetas = map[string]signalMeta{
 	SignalRestingHR:   {label: "Resting HR", unit: "bpm", lowerIsBetter: true},
 	SignalHRVBaseline: {label: "HRV baseline", unit: "ms", lowerIsBetter: false},
 	SignalWeeklyLoad:  {label: "Weekly volume", unit: "km", lowerIsBetter: false},
+	SignalDecoupling:  {label: "Decoupling", unit: "%", lowerIsBetter: true, isPace: false},
 }
 
 // buildSignal assembles one TrendSummary from a key + computed series.
@@ -335,12 +370,13 @@ func countNonNil(series []*float64) int {
 
 // ComputeProgress builds the deterministic ProgressReport over `weeks` weekly
 // buckets ending at `now`. Pure: caller supplies all rows + now. Signal order is
-// fixed (pace_at_hr, vo2max, resting_hr, hrv_baseline, weekly_load). Series are
-// always exactly `weeks` long, oldest-first, nil = a gap (never interpolated).
+// fixed (pace_at_hr, vo2max, resting_hr, hrv_baseline, weekly_load, decoupling).
+// Series are always exactly `weeks` long, oldest-first, nil = a gap (never interpolated).
 func ComputeProgress(
 	acts []store.Activity,
 	recovery []store.RecoveryDay,
 	vo2max []store.Vo2maxPoint,
+	streamPts []StreamAnalysisPoint,
 	profile store.AthleteProfile,
 	weeks int,
 	now time.Time,
@@ -353,6 +389,7 @@ func ComputeProgress(
 		buildSignal(SignalRestingHR, rhrSeries(recovery, buckets)),
 		buildSignal(SignalHRVBaseline, hrvSeries(recovery, buckets)),
 		buildSignal(SignalWeeklyLoad, weeklyLoadSeries(acts, buckets)),
+		buildSignal(SignalDecoupling, decouplingSeries(streamPts, buckets)),
 	}
 
 	// weekly_load is CONTEXT (always filled with 0.0, never nil), not a fitness

@@ -296,18 +296,22 @@ func TestComputeProgressFullReport(t *testing.T) {
 		{Date: "2026-04-01", Vo2max: f(50)},
 	}
 
-	rep := ComputeProgress(acts, rec, vo2, prof, 12, now)
+	streamPts := []StreamAnalysisPoint{
+		{StartTime: "2026-06-20T07:00:00Z", DecouplingPct: f64(4.0)}, // newest week
+		{StartTime: "2026-03-31T07:00:00Z", DecouplingPct: f64(7.0)}, // oldest week
+	}
+	rep := ComputeProgress(acts, rec, vo2, streamPts, prof, 12, now)
 	if rep.Weeks != 12 {
 		t.Errorf("Weeks = %d, want 12", rep.Weeks)
 	}
 	if rep.GeneratedAt == "" {
 		t.Error("GeneratedAt empty")
 	}
-	if len(rep.Signals) != 5 {
-		t.Fatalf("len(Signals) = %d, want 5", len(rep.Signals))
+	if len(rep.Signals) != 6 {
+		t.Fatalf("len(Signals) = %d, want 6", len(rep.Signals))
 	}
-	// Signal order is fixed: pace_at_hr, vo2max, resting_hr, hrv_baseline, weekly_load.
-	wantOrder := []string{SignalPaceAtHR, SignalVo2max, SignalRestingHR, SignalHRVBaseline, SignalWeeklyLoad}
+	// Signal order is fixed: pace_at_hr, vo2max, resting_hr, hrv_baseline, weekly_load, decoupling.
+	wantOrder := []string{SignalPaceAtHR, SignalVo2max, SignalRestingHR, SignalHRVBaseline, SignalWeeklyLoad, SignalDecoupling}
 	for i, s := range rep.Signals {
 		if s.Key != wantOrder[i] {
 			t.Errorf("signal[%d].Key = %q, want %q", i, s.Key, wantOrder[i])
@@ -342,13 +346,83 @@ func TestComputeProgressNotEnoughData(t *testing.T) {
 	prof := store.AthleteProfile{Zone2CeilingBpm: &z2}
 	// Only one in-band run total -> pace has 1 point; nothing else -> < 2 signals w/ >=2 pts.
 	acts := []store.Activity{mkRun("2026-06-20T07:00:00Z", 5000, 1650, hr(146))}
-	rep := ComputeProgress(acts, nil, nil, prof, 12, now)
+	rep := ComputeProgress(acts, nil, nil, nil, prof, 12, now)
 	if rep.EnoughData {
 		t.Error("EnoughData = true, want false (thin history)")
 	}
 	// Signals still computed (the handler decides whether to blank them); contract
 	// §3.3: EnoughData is the only thin-history gate.
-	if len(rep.Signals) != 5 {
-		t.Errorf("len(Signals) = %d, want 5", len(rep.Signals))
+	if len(rep.Signals) != 6 {
+		t.Errorf("len(Signals) = %d, want 6", len(rep.Signals))
+	}
+}
+
+func TestSignalDecouplingConstantAndMeta(t *testing.T) {
+	if SignalDecoupling != "decoupling" {
+		t.Errorf("SignalDecoupling = %q, want decoupling", SignalDecoupling)
+	}
+	m, ok := signalMetas[SignalDecoupling]
+	if !ok {
+		t.Fatal("signalMetas missing decoupling")
+	}
+	if m.unit != "%" || !m.lowerIsBetter || m.isPace {
+		t.Errorf("decoupling meta = %+v, want unit=%% lowerIsBetter=true isPace=false", m)
+	}
+}
+
+func TestDecouplingSeriesMedianAndGap(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	pts := []StreamAnalysisPoint{
+		{StartTime: "2026-06-20T07:00:00Z", DecouplingPct: f64(4)},
+		{StartTime: "2026-06-19T07:00:00Z", DecouplingPct: f64(6)},
+		{StartTime: "2026-06-18T07:00:00Z", DecouplingPct: nil}, // dropped
+		{StartTime: "2026-06-05T07:00:00Z", DecouplingPct: f64(8)},
+	}
+	got := decouplingSeries(pts, weekBuckets(3, now))
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	if got[0] == nil || *got[0] != 8 {
+		t.Errorf("wk0 = %v, want 8", got[0])
+	}
+	if got[1] != nil {
+		t.Errorf("wk1 = %v, want nil (gap)", got[1])
+	}
+	if got[2] == nil || *got[2] != 5 {
+		t.Errorf("wk2 = %v, want median 5", got[2])
+	}
+}
+
+func TestStreamAnalysisPointSkipsNilAndUnparseable(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	pts := []StreamAnalysisPoint{
+		{StartTime: "not-a-date", DecouplingPct: f64(5)},
+		{StartTime: "2026-06-20T07:00:00Z", DecouplingPct: nil},
+	}
+	got := decouplingSeries(pts, weekBuckets(1, now))
+	if got[0] != nil {
+		t.Errorf("wk0 = %v, want nil (all dropped)", got[0])
+	}
+}
+
+func TestComputeProgressDecouplingCountsTowardEnough(t *testing.T) {
+	now := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	hr := func(v float64) *float64 { return &v }
+	z2 := int64(145)
+	prof := store.AthleteProfile{Zone2CeilingBpm: &z2}
+	acts := []store.Activity{mkRun("2026-06-20T07:00:00Z", 5000, 1650, hr(146))}
+	streamPts := []StreamAnalysisPoint{
+		{StartTime: "2026-06-20T07:00:00Z", DecouplingPct: f64(5)},
+		{StartTime: "2026-03-31T07:00:00Z", DecouplingPct: f64(7)},
+	}
+	rep := ComputeProgress(acts, nil, nil, streamPts, prof, 12, now)
+	if rep.EnoughData {
+		t.Error("EnoughData = true, want false (only decoupling qualifies)")
+	}
+	f := func(v float64) *float64 { return &v }
+	vo2 := []store.Vo2maxPoint{{Date: "2026-06-19", Vo2max: f(52)}, {Date: "2026-04-01", Vo2max: f(50)}}
+	rep2 := ComputeProgress(acts, nil, vo2, streamPts, prof, 12, now)
+	if !rep2.EnoughData {
+		t.Error("EnoughData = false, want true (decoupling + vo2max both qualify)")
 	}
 }
