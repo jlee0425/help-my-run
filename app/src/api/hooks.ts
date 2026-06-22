@@ -21,6 +21,7 @@ import type {
   PushRegisterResponse,
   ProgressReport,
   ProgressRead,
+  StreamAnalysis,
 } from './types';
 
 export function useStatus() {
@@ -179,5 +180,25 @@ export function useAnalyzeProgress() {
   return useMutation({
     mutationFn: (body: { weeks?: number }) =>
       apiPost<ProgressRead>('/api/progress/analyze', body),
+  });
+}
+
+export function useActivityAnalysis(activityId: number) {
+  return useQuery({
+    queryKey: ['analysis', activityId],
+    queryFn: () => apiGet<StreamAnalysis>(`/api/activities/${activityId}/analysis`),
+    enabled: Number.isFinite(activityId),
+    // GET returns 200 + { has_stream:false } when not fetched, so no 404 branch needed.
+  });
+}
+
+export function useFetchStream(activityId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<StreamAnalysis>(`/api/activities/${activityId}/stream/fetch`),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['analysis', activityId], data);
+      queryClient.invalidateQueries({ queryKey: ['progress'] });
+    },
   });
 }
