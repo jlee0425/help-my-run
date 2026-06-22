@@ -104,6 +104,9 @@ func (c *Client) postToken(ctx context.Context, form url.Values) (*TokenResponse
 
 const perPage = 200
 
+// streamKeys is the fixed CSV requested for M3.2 streams.
+const streamKeys = "time,heartrate,velocity_smooth,distance"
+
 // ListActivities returns all activities after the given unix-second timestamp,
 // paginating until Strava returns an empty page.
 func (c *Client) ListActivities(ctx context.Context, accessToken string, after int64) ([]SummaryActivity, error) {
@@ -139,6 +142,45 @@ func (c *Client) ListLaps(ctx context.Context, accessToken string, activityID in
 	return laps, nil
 }
 
+// ErrRateLimited is returned (via getJSON) on HTTP 429. RetryAfter is the
+// time the 15-min window resets (next quarter-hour boundary :00/:15/:30/:45 UTC).
+type ErrRateLimited struct {
+	RetryAfter time.Time // when to resume
+	ReadUsage  string    // raw X-ReadRateLimit-Usage header ("15min,daily")
+	ReadLimit  string    // raw X-ReadRateLimit-Limit header
+}
+
+func (e *ErrRateLimited) Error() string {
+	return fmt.Sprintf("strava rate limited (read usage %s / limit %s); retry after %s",
+		e.ReadUsage, e.ReadLimit, e.RetryAfter.Format(time.RFC3339))
+}
+
+// nextQuarterHour returns the next :00/:15/:30/:45 boundary at/after t (UTC).
+func nextQuarterHour(t time.Time) time.Time {
+	t = t.UTC().Truncate(time.Minute)
+	add := 15 - (t.Minute() % 15)
+	return t.Add(time.Duration(add) * time.Minute)
+}
+
+// GetActivityStreams fetches the per-sample streams for an activity, keyed by type.
+// Path: /api/v3/activities/{id}/streams?keys=...&key_by_type=true
+// It REUSES the existing getJSON helper (request building + auth header + body
+// read); getJSON now returns *ErrRateLimited on HTTP 429 (the trickle catches it).
+// accessToken is supplied by the caller (the Engine refreshes it — FIX 4 / Task 11);
+// keeping the token param preserves the httptest seam the tests inject.
+func (c *Client) GetActivityStreams(ctx context.Context, accessToken string, activityID int64) (StreamSet, error) {
+	q := url.Values{}
+	q.Set("keys", streamKeys)
+	q.Set("key_by_type", "true")
+	path := "/api/v3/activities/" + strconv.FormatInt(activityID, 10) + "/streams?" + q.Encode()
+
+	var ss StreamSet
+	if err := c.getJSON(ctx, accessToken, path, &ss); err != nil {
+		return nil, err
+	}
+	return ss, nil
+}
+
 // getJSON performs an authenticated GET and unmarshals the JSON body into dst.
 func (c *Client) getJSON(ctx context.Context, accessToken, path string, dst any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
@@ -153,6 +195,13 @@ func (c *Client) getJSON(ctx context.Context, accessToken, path string, dst any)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &ErrRateLimited{
+			RetryAfter: nextQuarterHour(time.Now()),
+			ReadUsage:  resp.Header.Get("X-ReadRateLimit-Usage"),
+			ReadLimit:  resp.Header.Get("X-ReadRateLimit-Limit"),
+		}
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("strava GET %s: status %d: %s", path, resp.StatusCode, string(body))
 	}
