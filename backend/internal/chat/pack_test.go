@@ -228,18 +228,3 @@ func twoDigits(d int) string {
 	}
 	return string(rune('0'+d/10)) + string(rune('0'+d%10))
 }
-
-// captureRunner is a minimal inline llm.Runner stub so this standalone TDD task's
-// package compiles. Task 4 Step 1b DELETES this block and defines captureRunner in
-// engine_test.go for the whole package.
-type captureRunner struct {
-	out  []byte
-	args []string
-	body string
-}
-
-func (r *captureRunner) Run(ctx context.Context, args []string, stdin string) ([]byte, error) {
-	r.args = args
-	r.body = stdin
-	return r.out, nil
-}
