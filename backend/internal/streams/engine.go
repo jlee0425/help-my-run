@@ -107,7 +107,11 @@ func (e *Engine) GetOrComputeAnalysis(ctx context.Context, activityID int64) (St
 		return StreamAnalysis{}, err // ErrNotFound when not fetched
 	}
 	prof, err := e.store.GetAthleteProfile()
-	if err != nil {
+	if errors.Is(err, store.ErrNotFound) {
+		// A missing profile row must NOT be conflated with a missing stream:
+		// fall back to a zero-value profile so ZonesFromProfile uses defaults.
+		prof = store.AthleteProfile{}
+	} else if err != nil {
 		return StreamAnalysis{}, err
 	}
 	current := ZonesFromProfile(prof)

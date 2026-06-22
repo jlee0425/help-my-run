@@ -3,6 +3,7 @@ package streams
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -150,5 +151,32 @@ func TestGetOrComputeAnalysisNotFetched(t *testing.T) {
 	_, err := e.GetOrComputeAnalysis(context.Background(), 100)
 	if err != store.ErrNotFound {
 		t.Errorf("err = %v, want store.ErrNotFound (no raw stream stored)", err)
+	}
+}
+
+// With a raw stream stored but NO athlete_profile row, GetOrComputeAnalysis must
+// SUCCEED using default zones — a missing profile must not be conflated with a
+// missing stream (which the handler renders as has_stream:false).
+func TestGetOrComputeAnalysisMissingProfileUsesDefaults(t *testing.T) {
+	s := newStreamsStore(t)
+	ser := Series{T: []float64{0, 1, 2, 3}, HR: []float64{120, 120, 130, 130}, V: []float64{2, 2, 2, 2}, Dist: []float64{0, 2, 4, 6}}
+	seedRawStream(t, s, 100, ser)
+
+	// Remove the seeded (id=1) profile row so GetAthleteProfile returns ErrNotFound.
+	if _, err := s.DB.Exec(`DELETE FROM athlete_profile`); err != nil {
+		t.Fatalf("delete profile: %v", err)
+	}
+	if _, err := s.GetAthleteProfile(); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("precondition: GetAthleteProfile err = %v, want store.ErrNotFound", err)
+	}
+
+	e := newTestEngine(t, s)
+	got, err := e.GetOrComputeAnalysis(context.Background(), 100)
+	if err != nil {
+		t.Fatalf("GetOrComputeAnalysis with missing profile error = %v, want success with default zones", err)
+	}
+	want := ZonesFromProfile(store.AthleteProfile{})
+	if got.Zones != want {
+		t.Errorf("zones = %+v, want defaults %+v", got.Zones, want)
 	}
 }
