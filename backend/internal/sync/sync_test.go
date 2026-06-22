@@ -217,7 +217,7 @@ func TestSyncAllPartialFailure(t *testing.T) {
 	}
 	r := garmin.Runner{Python: "/bin/sh", Script: script}
 
-	out := SyncAll(context.Background(), s, client, r, nil)
+	out := SyncAll(context.Background(), s, client, r, nil, nil)
 	if out.Strava.Status != "ok" {
 		t.Errorf("strava = %+v, want ok", out.Strava)
 	}

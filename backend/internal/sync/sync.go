@@ -246,10 +246,14 @@ type AllResult struct {
 }
 
 // SyncAll runs both syncs sequentially (single SQLite writer) and returns both
-// results. A failure in one source never aborts the other.
-func SyncAll(ctx context.Context, s *store.Store, client *strava.Client, r garmin.Runner, extraEnv []string) AllResult {
-	return AllResult{
-		Strava: SyncStrava(ctx, s, client),
-		Garmin: SyncGarmin(ctx, s, r, extraEnv),
+// results. A failure in one source never aborts the other. When st is non-nil
+// and the Strava sync succeeds, it trickles a budgeted recent-window stream
+// backfill between the two syncs (never erroring the surrounding sync).
+func SyncAll(ctx context.Context, s *store.Store, client *strava.Client, r garmin.Runner, extraEnv []string, st *StreamTrickle) AllResult {
+	res := AllResult{Strava: SyncStrava(ctx, s, client)}
+	if res.Strava.Status == "ok" && st != nil && st.Fetcher != nil {
+		TrickleStreams(ctx, s, st.Fetcher, st.Weeks, st.Budget, time.Now())
 	}
+	res.Garmin = SyncGarmin(ctx, s, r, extraEnv)
+	return res
 }
