@@ -8,6 +8,7 @@ import (
 	"help-my-run/backend/internal/progress"
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
+	"help-my-run/backend/internal/streams"
 )
 
 // fakeAgent is the injected api.Agent for handler tests.
@@ -65,12 +66,38 @@ func (f *fakeProgress) Analyze(ctx context.Context, weeks int) (progress.Progres
 	return f.read, nil
 }
 
+// fakeStreams is the injected api.Streams for handler tests.
+type fakeStreams struct {
+	analysis    streams.StreamAnalysis
+	getErr      error
+	fetchErr    error
+	lastGetID   int64
+	lastFetchID int64
+}
+
+func (f *fakeStreams) GetOrComputeAnalysis(ctx context.Context, activityID int64) (streams.StreamAnalysis, error) {
+	f.lastGetID = activityID
+	if f.getErr != nil {
+		return streams.StreamAnalysis{}, f.getErr
+	}
+	return f.analysis, nil
+}
+
+func (f *fakeStreams) FetchAndAnalyze(ctx context.Context, activityID int64) (streams.StreamAnalysis, error) {
+	f.lastFetchID = activityID
+	if f.fetchErr != nil {
+		return streams.StreamAnalysis{}, f.fetchErr
+	}
+	return f.analysis, nil
+}
+
 // Compile-time interface conformance checks (the RED-state assertions).
 var (
 	_ Coach    = (*fakeCoach)(nil)
 	_ Agent    = (*fakeAgent)(nil)
 	_ Pusher   = (*fakePusher)(nil)
 	_ Progress = (*fakeProgress)(nil)
+	_ Streams  = (*fakeStreams)(nil)
 )
 
 var _ = readiness.ColorGreen
