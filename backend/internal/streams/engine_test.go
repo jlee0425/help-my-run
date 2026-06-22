@@ -28,7 +28,8 @@ func newStreamsStore(t *testing.T) *store.Store {
 func newTestEngine(t *testing.T, s *store.Store) *Engine {
 	t.Helper()
 	// Strava client + runner are unused by GetOrComputeAnalysis; pass minimal values.
-	return New(s, strava.NewWithBase("1", "x", "http://cb", "http://unused"), garmin.Runner{}, nil)
+	// matchToleranceS=120 (M3.2.1 default); existing GetOrComputeAnalysis tests never call resolveGarminID.
+	return New(s, strava.NewWithBase("1", "x", "http://cb", "http://unused"), garmin.Runner{}, nil, 120)
 }
 
 // seedRawStream stores an activity + its gzipped raw stream (no analysis yet).
@@ -178,5 +179,108 @@ func TestGetOrComputeAnalysisMissingProfileUsesDefaults(t *testing.T) {
 	want := ZonesFromProfile(store.AthleteProfile{})
 	if got.Zones != want {
 		t.Errorf("zones = %+v, want defaults %+v", got.Zones, want)
+	}
+}
+
+func TestResolveGarminID(t *testing.T) {
+	// Strava reference run: starts 2026-06-22T05:00:00Z, moving 1800s, 5000m.
+	const stravaID = int64(900)
+	const startISO = "2026-06-22T05:00:00Z"
+
+	type cand struct {
+		id      int64
+		start   string
+		durS    *float64 // nil -> NULL duration_s
+		distM   *float64 // nil -> NULL distance_m
+		actType *string  // nil -> NULL activity_type (excluded by LIKE '%running%')
+	}
+	run := strp("running")
+	trail := strp("trail_running")
+	bike := strp("cycling")
+
+	tests := []struct {
+		name    string
+		seedAct bool // upsert the Strava activities row?
+		cands   []cand
+		wantID  int64
+		wantOK  bool
+	}{
+		{
+			name:    "single match within tolerance",
+			seedAct: true,
+			cands: []cand{
+				{id: 1, start: "2026-06-22T05:00:30Z", durS: f64p(1805), distM: f64p(5010), actType: run},
+			},
+			wantID: 1, wantOK: true,
+		},
+		{
+			name:    "no candidate within tolerance -> false",
+			seedAct: true,
+			cands: []cand{
+				{id: 2, start: "2026-06-22T05:10:00Z", durS: f64p(1800), distM: f64p(5000), actType: run}, // +600s > 120
+			},
+			wantID: 0, wantOK: false,
+		},
+		{
+			name:    "tie-break by closest duration (vs MovingTimeS)",
+			seedAct: true,
+			cands: []cand{
+				{id: 3, start: "2026-06-22T05:00:10Z", durS: f64p(1900), distM: f64p(5000), actType: run}, // |1900-1800|=100
+				{id: 4, start: "2026-06-22T05:00:20Z", durS: f64p(1810), distM: f64p(9999), actType: run}, // |1810-1800|=10  (wins on duration)
+			},
+			wantID: 4, wantOK: true,
+		},
+		{
+			name:    "tie-break by distance when duration ties",
+			seedAct: true,
+			cands: []cand{
+				{id: 5, start: "2026-06-22T05:00:10Z", durS: f64p(1820), distM: f64p(5200), actType: run},   // durDelta=20, distDelta=200
+				{id: 6, start: "2026-06-22T05:00:20Z", durS: f64p(1820), distM: f64p(5010), actType: trail}, // durDelta=20, distDelta=10 (wins)
+			},
+			wantID: 6, wantOK: true,
+		},
+		{
+			name:    "non-run candidate excluded -> false",
+			seedAct: true,
+			cands: []cand{
+				{id: 7, start: "2026-06-22T05:00:05Z", durS: f64p(1800), distM: f64p(5000), actType: bike},
+			},
+			wantID: 0, wantOK: false,
+		},
+		{
+			name:    "unknown strava activity -> false",
+			seedAct: false,
+			cands: []cand{
+				{id: 8, start: "2026-06-22T05:00:05Z", durS: f64p(1800), distM: f64p(5000), actType: run},
+			},
+			wantID: 0, wantOK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newStreamsStore(t)
+			if tt.seedAct {
+				if err := s.UpsertActivity(store.Activity{
+					StravaID: stravaID, Name: "run", Type: "Run",
+					StartTime: startISO, DistanceM: 5000, MovingTimeS: 1800, ElapsedTimeS: 1850, RawJSON: "{}",
+				}); err != nil {
+					t.Fatalf("upsert activity: %v", err)
+				}
+			}
+			for _, c := range tt.cands {
+				if err := s.UpsertGarminActivity(store.GarminActivityRow{
+					GarminActivityID: c.id, StartTime: c.start, DurationS: c.durS,
+					DistanceM: c.distM, ActivityType: c.actType, RawJSON: "null",
+				}); err != nil {
+					t.Fatalf("upsert garmin activity %d: %v", c.id, err)
+				}
+			}
+			e := newTestEngine(t, s)
+			gid, ok := e.resolveGarminID(stravaID)
+			if ok != tt.wantOK || gid != tt.wantID {
+				t.Errorf("resolveGarminID = (%d,%v), want (%d,%v)", gid, ok, tt.wantID, tt.wantOK)
+			}
+		})
 	}
 }

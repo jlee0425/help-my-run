@@ -15,16 +15,17 @@ import (
 // analysis cache + recompute-on-zone-change logic and the on-demand/trickle
 // fetch path. *Engine satisfies api.Streams and sync.streamFetcher.
 type Engine struct {
-	store    *store.Store
-	strava   *strava.Client
-	runner   garmin.Runner
-	extraEnv []string
+	store           *store.Store
+	strava          *strava.Client
+	runner          garmin.Runner
+	extraEnv        []string
+	matchToleranceS int // M3.2.1: GARMIN_MATCH_TOLERANCE_S — start-time match window (s).
 }
 
 // New constructs a streams Engine. The strava client + garmin runner power
 // FetchAndAnalyze; GetOrComputeAnalysis uses only the store.
-func New(s *store.Store, sc *strava.Client, runner garmin.Runner, extraEnv []string) *Engine {
-	return &Engine{store: s, strava: sc, runner: runner, extraEnv: extraEnv}
+func New(s *store.Store, sc *strava.Client, runner garmin.Runner, extraEnv []string, matchToleranceS int) *Engine {
+	return &Engine{store: s, strava: sc, runner: runner, extraEnv: extraEnv, matchToleranceS: matchToleranceS}
 }
 
 // rowToAnalysis decodes a stored StreamAnalysisRow into a StreamAnalysis.
@@ -211,21 +212,50 @@ func (e *Engine) accessToken(ctx context.Context) (string, error) {
 	return tok.AccessToken, nil
 }
 
-// resolveGarminID maps a Strava activity id to a Garmin download id when one is
-// resolvable (v1: best-effort). Returns ok=false to skip the FIT fallback.
-//
-// *** M3.2 SHIPS THE GARMIN .FIT FALLBACK DORMANT (intentional). ***
-// There is NO Strava<->Garmin activity-id mapping in the M3.2 data model, so this
-// ALWAYS returns (0, false). The FIT fetch/parse infrastructure (Task 7 worker
-// `stream` subcommand + RunGarminFetchFIT) and this call site are fully built and
-// unit-tested, but the fallback NEVER fires at runtime in M3.2 — every no-HR
-// Strava run degrades to the "no HR" state with the Strava (no-HR) raw stored.
-// The fallback ACTIVATES only once a future slice adds a Strava<->Garmin
-// activity-id mapping (e.g. ingest Garmin activity ids + match by start_time).
-// Do NOT delete the FIT code: the infra is intentionally landed ahead of activation.
+// resolveGarminID maps a Strava activity id to a Garmin download id by lazy
+// start-time match (±matchToleranceS) over garmin_activities, tie-broken by
+// closest duration (vs the Strava MovingTimeS) then closest distance. Run-type
+// filtering happens in the store query (LIKE '%running%'). Returns ok=false to
+// skip the FIT fallback (unknown activity, no candidate in window, or store error
+// → graceful degrade to the Strava no-HR series). M3.2.1 activates the dormant
+// M3.2 FIT fallback by replacing the prior (0,false) stub.
 func (e *Engine) resolveGarminID(stravaActivityID int64) (int64, bool) {
-	// v1: no mapping table exists (DORMANT — see the note above and the spec §3.1/§4).
-	// Return false so the fallback is skipped and the Strava (no-HR) raw is stored.
-	// A later id-mapping slice flips this on; the call site already degrades gracefully.
-	return 0, false
+	act, err := e.store.GetActivity(stravaActivityID)
+	if err != nil {
+		return 0, false // unknown activity → no match (graceful degrade)
+	}
+	cands, err := e.store.FindGarminActivitiesNear(act.StartTime, e.matchToleranceS)
+	if err != nil || len(cands) == 0 {
+		return 0, false
+	}
+
+	bestID := int64(0)
+	bestSet := false
+	var bestDur, bestDist float64
+	target := float64(act.MovingTimeS)
+	for _, c := range cands {
+		durDelta := 1e18
+		if c.DurationS != nil {
+			durDelta = absF(*c.DurationS - target)
+		}
+		distDelta := 1e18
+		if c.DistanceM != nil {
+			distDelta = absF(*c.DistanceM - act.DistanceM)
+		}
+		if !bestSet || durDelta < bestDur || (durDelta == bestDur && distDelta < bestDist) {
+			bestID, bestDur, bestDist, bestSet = c.GarminActivityID, durDelta, distDelta, true
+		}
+	}
+	if !bestSet {
+		return 0, false
+	}
+	return bestID, true
+}
+
+// absF is the float64 absolute value (avoids a math import for one call).
+func absF(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
