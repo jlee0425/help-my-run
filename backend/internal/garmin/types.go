@@ -14,6 +14,17 @@ type WorkerOutput struct {
 	BodyBattery []BodyBatteryDay `json:"body_battery"`
 	RHR         []RhrDay         `json:"rhr"`
 	VO2Max      []Vo2maxDay      `json:"vo2max"`
+	Activities  []GarminActivity `json:"activities"` // M3.2.1
+}
+
+// GarminActivity is one element of the Garmin activities list (§2.x).
+type GarminActivity struct {
+	GarminActivityID int64           `json:"garmin_activity_id"`
+	StartTime        string          `json:"start_time"`
+	DurationS        *float64        `json:"duration_s"`
+	DistanceM        *float64        `json:"distance_m"`
+	ActivityType     *string         `json:"activity_type"`
+	RawJSON          json.RawMessage `json:"raw_json"`
 }
 
 // SleepDay is one per-day sleep entry. RawJSON is kept verbatim for the store.
