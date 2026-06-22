@@ -149,3 +149,60 @@ def build_output(
         "rhr": rhr,
         "vo2max": vo2max,
     }
+
+
+import io
+import zipfile
+
+
+def _fit_decode(fit_bytes: bytes):
+    """Decode a raw .fit byte string -> (messages, errors). Isolated so tests
+    can monkeypatch it without the garmin-fit-sdk dependency."""
+    from garmin_fit_sdk import Decoder, Stream  # local import; dep added in requirements
+
+    return Decoder(Stream.from_byte_array(fit_bytes)).read()
+
+
+def normalize_fit_stream(raw: bytes) -> dict:
+    """Parse the ORIGINAL download (a ZIP of a .fit) -> the §2.6 series object.
+
+    Units already match Strava: enhanced_speed/speed in m/s, distance in meters.
+    t = (timestamp - first_timestamp).total_seconds(); per-record HR that is
+    None/absent is DROPPED so a HR-less FIT yields hr=[] (degraded state)."""
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        fit_name = next(n for n in z.namelist() if n.lower().endswith(".fit"))
+        fit_bytes = z.read(fit_name)
+
+    messages, _errors = _fit_decode(fit_bytes)
+    records = messages.get("record_mesgs", []) or []
+
+    t, hr, v, dist = [], [], [], []
+    first_ts = None
+    any_hr = False
+    for r in records:
+        ts = r.get("timestamp")
+        if ts is None:
+            continue
+        if first_ts is None:
+            first_ts = ts
+        t.append((ts - first_ts).total_seconds())
+        speed = r.get("enhanced_speed", r.get("speed"))
+        v.append(speed if speed is not None else 0.0)
+        dist.append(r.get("distance") if r.get("distance") is not None else 0.0)
+        h = r.get("heart_rate")
+        if h is not None:
+            any_hr = True
+            hr.append(h)
+    if not any_hr:
+        hr = []
+    return {"t": t, "hr": hr, "v": v, "dist": dist}
+
+
+def build_fit_output(*, activity_id: int, fetched_at: str, series: dict) -> dict:
+    """Assemble the §2.6 worker `stream` stdout object. Key order fixed."""
+    return {
+        "activity_id": activity_id,
+        "source": "garmin",
+        "fetched_at": fetched_at,
+        "series": series,
+    }

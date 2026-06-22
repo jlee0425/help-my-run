@@ -18,7 +18,7 @@ import json
 import sys
 from typing import Optional, Sequence
 
-from . import client, normalize
+from . import client, fetcher, normalize
 from .fetcher import run_fetch
 
 try:  # re-exported from package root (Garmin research §5)
@@ -61,6 +61,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="emit synthetic contract JSON without contacting Garmin",
+    )
+
+    strm = sub.add_parser("stream", help="download+parse one activity FIT; print §2.6 JSON to stdout")
+    strm.add_argument("--activity-id", required=True, help="GARMIN activity id to download")
+    strm.add_argument("--echo-id", default=None, help="Strava id to echo as activity_id (default: --activity-id)")
+    strm.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="emit synthetic §2.6 JSON without contacting Garmin",
     )
     return parser
 
@@ -120,6 +129,33 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"login failed: {exc}", file=sys.stderr)
             return 1
         print(f"login ok; tokens saved to {client.tokenstore_path()}", file=sys.stderr)
+        return 0
+
+    if args.command == "stream":
+        echo_id = int(args.echo_id) if args.echo_id else int(args.activity_id)
+        if args.dry_run:
+            output = normalize.build_fit_output(
+                activity_id=echo_id,
+                fetched_at="2026-06-22T05:00:12Z",
+                series={"t": [0, 1, 2], "hr": [104, 105, 106], "v": [0.0, 1.59, 1.66], "dist": [0.0, 2.9, 5.6]},
+            )
+            json.dump(output, sys.stdout)
+            sys.stdout.write("\n")
+            return 0
+        fetched_at = (
+            _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+        )
+        try:
+            live = client.GarminClient.resume()
+            output = fetcher.run_fit_fetch(live, activity_id=args.activity_id, echo_id=echo_id, fetched_at=fetched_at)
+        except GarminConnectAuthenticationError as exc:
+            print(f"garmin authentication failed ({exc}); re-run worker.py login", file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"stream fetch failed: {exc}", file=sys.stderr)
+            return 1
+        json.dump(output, sys.stdout)
+        sys.stdout.write("\n")
         return 0
 
     # command == "fetch"

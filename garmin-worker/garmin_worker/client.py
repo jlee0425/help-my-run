@@ -96,3 +96,8 @@ class GarminClient:
 
     def get_max_metrics(self, cdate: str) -> dict:
         return self._g.get_max_metrics(cdate)
+
+    def download_activity_original(self, activity_id: str) -> bytes:
+        """Download the ORIGINAL uploaded file (a ZIP of the .fit) for an activity."""
+        from garminconnect import ActivityDownloadFormat  # local import
+        return self._g.download_activity(activity_id, ActivityDownloadFormat.ORIGINAL)

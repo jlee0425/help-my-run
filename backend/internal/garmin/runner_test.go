@@ -75,3 +75,33 @@ func TestRunGarminFetchSurfacesStderrOnFailure(t *testing.T) {
 		t.Errorf("error = %q, want it to contain stderr 're-run worker.py login'", err.Error())
 	}
 }
+
+func TestRunGarminFetchFITParsesOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	const want = `{"activity_id":14820001234,"source":"garmin","fetched_at":"2026-06-22T05:00:12Z","series":{"t":[0,1,2],"hr":[104,105,106],"v":[0.0,1.59,1.66],"dist":[0.0,2.9,5.6]}}`
+	script := filepath.Join(t.TempDir(), "stub.sh")
+	body := "#!/bin/sh\n" +
+		"echo \"$@\" | grep -q -- '--activity-id 555' || { echo 'missing --activity-id' 1>&2; exit 2; }\n" +
+		"echo \"$@\" | grep -q -- '--echo-id 14820001234' || { echo 'missing --echo-id' 1>&2; exit 2; }\n" +
+		"echo '" + want + "'\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	r := Runner{Python: "/bin/sh", Script: script}
+
+	out, err := r.RunGarminFetchFIT(context.Background(), 555, 14820001234, nil)
+	if err != nil {
+		t.Fatalf("RunGarminFetchFIT error = %v", err)
+	}
+	if out.ActivityID != 14820001234 || out.Source != "garmin" {
+		t.Errorf("out = id %d src %q, want 14820001234 garmin", out.ActivityID, out.Source)
+	}
+	if len(out.Series.HR) != 3 || out.Series.HR[0] != 104 {
+		t.Errorf("series.hr = %v, want [104 105 106]", out.Series.HR)
+	}
+	if len(out.Series.V) != 3 || out.Series.V[1] != 1.59 {
+		t.Errorf("series.v = %v, want [0 1.59 1.66]", out.Series.V)
+	}
+}
