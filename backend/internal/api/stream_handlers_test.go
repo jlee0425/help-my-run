@@ -74,8 +74,8 @@ func TestActivityAnalysisFetchedWithHR(t *testing.T) {
 			{Zone: 5, Seconds: 0, Pct: 0.0},
 		},
 		DecouplingPct: fpv(4.2), PaHRFirst: fpv(0.0212), PaHRSecond: fpv(0.0203),
-		Zones:      streams.ZoneBounds{Z1Hi: 116, Z2Hi: 145, Z3Hi: 157.5, Z4Hi: 170},
-		Source:     "strava", ComputedAt: "2026-06-22T07:00:00Z",
+		Zones:  streams.ZoneBounds{Z1Hi: 116, Z2Hi: 145, Z3Hi: 157.5, Z4Hi: 170},
+		Source: "strava", ComputedAt: "2026-06-22T07:00:00Z",
 	}}
 	h := newStreamsServer(t, fs)
 	rec := do(t, h, http.MethodGet, "/api/activities/14820001234/analysis", testToken)
@@ -134,7 +134,7 @@ func TestActivityAnalysisNotFetched(t *testing.T) {
 func TestActivityAnalysisNoHR(t *testing.T) {
 	fs := &fakeStreams{analysis: streams.StreamAnalysis{
 		ActivityID: 14820001234, HasHR: false, TimeInZone: []streams.ZoneTime{},
-		Zones: streams.ZoneBounds{Z1Hi: 116, Z2Hi: 145, Z3Hi: 157.5, Z4Hi: 170},
+		Zones:  streams.ZoneBounds{Z1Hi: 116, Z2Hi: 145, Z3Hi: 157.5, Z4Hi: 170},
 		Source: "strava", ComputedAt: "2026-06-22T07:00:00Z",
 	}}
 	h := newStreamsServer(t, fs)
@@ -172,10 +172,10 @@ func TestFetchStreamRequiresAuth(t *testing.T) {
 func TestFetchStreamSuccess(t *testing.T) {
 	fs := &fakeStreams{analysis: streams.StreamAnalysis{
 		ActivityID: 14820001234, HasHR: true,
-		TimeInZone: []streams.ZoneTime{{Zone: 2, Seconds: 1800, Pct: 100}},
+		TimeInZone:    []streams.ZoneTime{{Zone: 2, Seconds: 1800, Pct: 100}},
 		DecouplingPct: fpv(3.1),
-		Zones:      streams.ZoneBounds{Z1Hi: 116, Z2Hi: 145, Z3Hi: 157.5, Z4Hi: 170},
-		Source:     "strava", ComputedAt: "2026-06-22T07:00:00Z",
+		Zones:         streams.ZoneBounds{Z1Hi: 116, Z2Hi: 145, Z3Hi: 157.5, Z4Hi: 170},
+		Source:        "strava", ComputedAt: "2026-06-22T07:00:00Z",
 	}}
 	h := newStreamsServer(t, fs)
 	rec := do(t, h, http.MethodPost, "/api/activities/14820001234/stream/fetch", testToken)

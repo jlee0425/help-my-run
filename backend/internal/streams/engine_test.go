@@ -96,9 +96,9 @@ func TestGetOrComputeAnalysisReturnsCached(t *testing.T) {
 func TestGetOrComputeAnalysisRecomputesOnZoneChange(t *testing.T) {
 	s := newStreamsStore(t)
 	ser := Series{
-		T:    []float64{0, 1, 2, 3},
-		HR:   []float64{140, 140, 150, 150}, // 2 below 145, 2 above (default)
-		V:    []float64{2, 2, 2, 2}, Dist: []float64{0, 2, 4, 6},
+		T:  []float64{0, 1, 2, 3},
+		HR: []float64{140, 140, 150, 150}, // 2 below 145, 2 above (default)
+		V:  []float64{2, 2, 2, 2}, Dist: []float64{0, 2, 4, 6},
 	}
 	seedRawStream(t, s, 100, ser)
 	e := newTestEngine(t, s)
