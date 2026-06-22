@@ -12,8 +12,10 @@ A self-hostable, single-user AI running coach. It pulls your runs from **Strava*
 
 - **A Strava API application.** Create one at <https://www.strava.com/settings/api>. Copy the **Client ID** and **Client Secret** into `.env` (`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`). Set the application's **Authorization Callback Domain** to match `STRAVA_REDIRECT_URL` (e.g. `localhost`); the redirect URL must point at `/api/strava/callback`.
 - **A Garmin Connect account** (email + password) for the one-time `worker.py login`.
-- **An Anthropic API key** is **not needed for M0** — it is loaded but unused until M1. You can leave `ANTHROPIC_API_KEY` blank for now.
+- **No Anthropic API key needed.** The AI features (M1 plans, M2 daily loop, M3.3 chat) run through the `claude` CLI under your **Claude subscription** at $0 per token. ⚠️ **Leave `ANTHROPIC_API_KEY` UNSET** — `claude` prefers an env API key over your subscription, so any value there (even a placeholder) makes `claude -p` fail with a 401. Only set it if you deliberately want metered API billing.
 - Go 1.22+, Python 3.11+, and Node.js 18+ installed.
+
+> **⚠️ Use absolute paths in `.env`.** `make run-backend` runs from `backend/`, so relative `PYTHON_BIN` / `WORKER_SCRIPT` / `IMAGE_DIR` / `DB_PATH` resolve under `backend/` and break (e.g. the Garmin worker fails with "no such file"). Point them at absolute repo-root paths — see `.env.example`.
 
 ## Setup
 
