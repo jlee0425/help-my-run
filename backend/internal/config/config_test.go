@@ -19,6 +19,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 		"GARMIN_EMAIL", "GARMIN_PASSWORD", "GARMIN_TOKENSTORE",
 		"PYTHON_BIN", "WORKER_SCRIPT", "ANTHROPIC_API_KEY",
 		"CLAUDE_BIN", "CLAUDE_MODEL", "IMAGE_DIR",
+		"STREAM_RECENT_WEEKS", "STREAM_FETCH_BUDGET",
 	}
 	for _, k := range all {
 		// t.Setenv first to register restoration of the original value on
