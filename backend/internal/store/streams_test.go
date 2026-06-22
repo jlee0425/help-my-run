@@ -1,10 +1,71 @@
 package store
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
+	"io"
 	"testing"
-
-	"help-my-run/backend/internal/streams"
 )
+
+// testSeries mirrors streams.Series' JSON wire shape (struct-of-arrays
+// {t,hr,v,dist}). It is duplicated here, rather than imported from
+// internal/streams, because internal/streams imports internal/store and a
+// streams_test.go in package store importing internal/streams would form an
+// import cycle ("import cycle not allowed in test"). The store layer treats the
+// blob opaquely, so an independent codec with the same JSON shape exercises the
+// BLOB round-trip identically.
+type testSeries struct {
+	T    []float64 `json:"t"`
+	HR   []float64 `json:"hr"`
+	V    []float64 `json:"v"`
+	Dist []float64 `json:"dist"`
+}
+
+func (s testSeries) HasHR() bool { return len(s.HR) > 0 }
+func (s testSeries) Len() int    { return len(s.T) }
+
+// compressTestSeries marshals s to JSON and gzips it, matching
+// streams.CompressSeries' wire format byte-for-byte at the JSON layer.
+func compressTestSeries(t *testing.T, s testSeries) []byte {
+	t.Helper()
+	raw, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal series: %v", err)
+	}
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	if err != nil {
+		t.Fatalf("new gzip writer: %v", err)
+	}
+	if _, err := zw.Write(raw); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// decompressTestSeries gunzips gz and unmarshals it back to a testSeries,
+// matching streams.DecompressSeries.
+func decompressTestSeries(t *testing.T, gz []byte) testSeries {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(gz))
+	if err != nil {
+		t.Fatalf("new gzip reader: %v", err)
+	}
+	defer func() { _ = zr.Close() }()
+	raw, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("gzip read: %v", err)
+	}
+	var s testSeries
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatalf("unmarshal series: %v", err)
+	}
+	return s
+}
 
 // seedActivity inserts a minimal activities row so stream FKs resolve.
 func seedActivity(t *testing.T, s *Store, id int64, startTime string) {
@@ -31,11 +92,8 @@ func TestActivityStreamRoundTrip(t *testing.T) {
 	}
 
 	// gzip a real series and store it as a BLOB.
-	in := streams.Series{T: []float64{0, 1, 2}, HR: []float64{100, 101, 102}, V: []float64{0, 1.5, 1.6}, Dist: []float64{0, 1.5, 3.1}}
-	gz, err := streams.CompressSeries(in)
-	if err != nil {
-		t.Fatalf("CompressSeries: %v", err)
-	}
+	in := testSeries{T: []float64{0, 1, 2}, HR: []float64{100, 101, 102}, V: []float64{0, 1.5, 1.6}, Dist: []float64{0, 1.5, 3.1}}
+	gz := compressTestSeries(t, in)
 	if err := s.UpsertActivityStream(ActivityStream{ActivityID: 100, Source: "strava", SeriesGz: gz}); err != nil {
 		t.Fatalf("UpsertActivityStream: %v", err)
 	}
@@ -55,17 +113,14 @@ func TestActivityStreamRoundTrip(t *testing.T) {
 		t.Error("FetchedAt empty, want server-set RFC3339")
 	}
 	// BLOB survives the DB round-trip: decompress to the original Series.
-	back, err := streams.DecompressSeries(got.SeriesGz)
-	if err != nil {
-		t.Fatalf("DecompressSeries(stored blob): %v", err)
-	}
+	back := decompressTestSeries(t, got.SeriesGz)
 	if back.Len() != 3 || !back.HasHR() || back.HR[1] != 101 {
 		t.Errorf("decompressed stored blob = %+v, want original 3-sample HR series", back)
 	}
 
 	// Re-upsert with a new blob -> update, not duplicate; FetchedAt refreshed.
-	in2 := streams.Series{T: []float64{0, 1}, HR: nil, V: []float64{0, 1.5}, Dist: []float64{0, 1.5}}
-	gz2, _ := streams.CompressSeries(in2)
+	in2 := testSeries{T: []float64{0, 1}, HR: nil, V: []float64{0, 1.5}, Dist: []float64{0, 1.5}}
+	gz2 := compressTestSeries(t, in2)
 	if err := s.UpsertActivityStream(ActivityStream{ActivityID: 100, Source: "garmin", SeriesGz: gz2}); err != nil {
 		t.Fatalf("re-UpsertActivityStream: %v", err)
 	}
@@ -80,7 +135,7 @@ func TestActivityStreamRoundTrip(t *testing.T) {
 	if got2.Source != "garmin" {
 		t.Errorf("after re-upsert source = %q, want garmin", got2.Source)
 	}
-	back2, _ := streams.DecompressSeries(got2.SeriesGz)
+	back2 := decompressTestSeries(t, got2.SeriesGz)
 	if back2.HasHR() {
 		t.Errorf("re-upserted no-HR blob HasHR() = true, want false")
 	}
