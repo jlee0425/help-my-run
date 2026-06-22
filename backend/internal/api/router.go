@@ -65,6 +65,15 @@ type Streams interface {
 	FetchAndAnalyze(ctx context.Context, activityID int64) (streams.StreamAnalysis, error)
 }
 
+// Chat is the M3.3 chat-engine seam, injected from main.go (avoids an import
+// cycle: api must not import the concrete chat.Engine). *chat.Engine satisfies
+// it structurally. Answer persists both turns and returns the assistant turn;
+// on claude -p failure it returns a typed error (handler -> 502). GET/DELETE
+// use Store directly.
+type Chat interface {
+	Answer(ctx context.Context, message string) (store.ChatMessage, error)
+}
+
 // Deps are the handler dependencies injected by main.go (and tests).
 type Deps struct {
 	Store    *store.Store
@@ -77,6 +86,7 @@ type Deps struct {
 	Pusher   Pusher   // M2: push transport
 	Progress Progress // M3.1: progress engine (GET /api/progress, POST /api/progress/analyze)
 	Streams  Streams  // M3.2: streams engine (GET .../analysis, POST .../stream/fetch)
+	Chat     Chat     // M3.3: chat engine (POST /api/chat); GET/DELETE use Store directly
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.
@@ -123,6 +133,11 @@ func NewRouter(d Deps) http.Handler {
 		// M3.2
 		r.Get("/api/activities/{id}/analysis", h.activityAnalysis)
 		r.Post("/api/activities/{id}/stream/fetch", h.fetchStream)
+
+		// M3.3
+		r.Post("/api/chat", h.chat)
+		r.Get("/api/chat", h.chatHistory)
+		r.Delete("/api/chat", h.clearChat)
 	})
 
 	return r

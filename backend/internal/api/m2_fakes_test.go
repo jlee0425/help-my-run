@@ -8,6 +8,7 @@ import (
 	"help-my-run/backend/internal/progress"
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
+	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/streams"
 )
 
@@ -91,6 +92,24 @@ func (f *fakeStreams) FetchAndAnalyze(ctx context.Context, activityID int64) (st
 	return f.analysis, nil
 }
 
+// fakeChat is the injected api.Chat for handler tests.
+type fakeChat struct {
+	msg       store.ChatMessage
+	answerErr error
+	lastMsg   string
+}
+
+func (f *fakeChat) Answer(ctx context.Context, message string) (store.ChatMessage, error) {
+	f.lastMsg = message
+	if f.answerErr != nil {
+		return store.ChatMessage{}, f.answerErr
+	}
+	if f.msg.Role == "" {
+		f.msg = store.ChatMessage{Role: "assistant", Content: "ok", CreatedAt: "2026-06-22T09:14:02Z"}
+	}
+	return f.msg, nil
+}
+
 // Compile-time interface conformance checks (the RED-state assertions).
 var (
 	_ Coach    = (*fakeCoach)(nil)
@@ -98,6 +117,7 @@ var (
 	_ Pusher   = (*fakePusher)(nil)
 	_ Progress = (*fakeProgress)(nil)
 	_ Streams  = (*fakeStreams)(nil)
+	_ Chat     = (*fakeChat)(nil)
 )
 
 var _ = readiness.ColorGreen

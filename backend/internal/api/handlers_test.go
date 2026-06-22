@@ -39,6 +39,7 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 		Pusher:   &fakePusher{},
 		Progress: &fakeProgress{},
 		Streams:  &fakeStreams{},
+		Chat:     &fakeChat{},
 	}
 	return NewRouter(deps), s
 }
