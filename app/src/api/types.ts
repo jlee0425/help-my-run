@@ -201,3 +201,15 @@ export interface StreamAnalysis {
   source: 'strava' | 'garmin' | '';
   computed_at: string;            // '' when not fetched
 }
+
+// --- M3.3 chat types (snake_case wire JSON; mirror the Go DTO exactly) ---
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string; // RFC3339
+}
+
+export interface ChatHistory {
+  messages: ChatMessage[]; // oldest-first (newest-last) for rendering
+}

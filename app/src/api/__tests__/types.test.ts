@@ -294,3 +294,28 @@ describe('M2 API types', () => {
     expect(p.agent_enabled).toBe(true);
   });
 });
+
+import type { ChatMessage, ChatHistory } from '../types';
+
+describe('M3.3 chat types', () => {
+  it('ChatMessage carries role/content/created_at (snake_case)', () => {
+    const m: ChatMessage = {
+      role: 'assistant',
+      content: 'Your Z2 pace dropped ~8 s/km.',
+      created_at: '2026-06-22T09:14:02Z',
+    };
+    expect(m.role).toBe('assistant');
+    expect(m.created_at).toBe('2026-06-22T09:14:02Z');
+  });
+
+  it('ChatHistory wraps an oldest-first messages array', () => {
+    const h: ChatHistory = {
+      messages: [
+        { role: 'user', content: 'How is my pace?', created_at: '2026-06-22T09:13:00Z' },
+        { role: 'assistant', content: 'Improving.', created_at: '2026-06-22T09:14:00Z' },
+      ],
+    };
+    expect(h.messages).toHaveLength(2);
+    expect(h.messages[0].role).toBe('user');
+  });
+});
