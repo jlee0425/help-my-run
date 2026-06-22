@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPut, apiUpload, ApiError } from '../client';
+import { apiGet, apiPost, apiPut, apiDelete, apiUpload, ApiError } from '../client';
 
 jest.mock('../config', () => ({
   getBaseUrl: jest.fn(),
@@ -197,5 +197,32 @@ describe('apiUpload', () => {
       apiUpload('/api/crossfit/parse', { uri: 'file:///c.jpg', name: 'c.jpg', type: 'image/jpeg' }),
     ).rejects.toMatchObject({ status: 0, message: 'Backend URL not configured' });
     expect(global.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('apiDelete', () => {
+  it('uses DELETE and returns undefined on 204 No Content', async () => {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      json: async () => {
+        throw new Error('should not parse json on 204');
+      },
+    });
+
+    const data = await apiDelete<void>('/api/chat');
+
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('http://localhost:8080/api/chat');
+    expect(init.method).toBe('DELETE');
+    expect(init.body).toBeUndefined();
+    expect(data).toBeUndefined();
+  });
+
+  it('throws ApiError on a non-ok response', async () => {
+    mockFetchOnce({ ok: false, status: 500, json: { error: 'boom' } });
+    const err = await apiDelete('/api/chat').catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ name: 'ApiError', status: 500 });
   });
 });
