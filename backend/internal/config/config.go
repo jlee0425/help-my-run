@@ -41,6 +41,10 @@ type Config struct {
 	AgentTimezone       string `envconfig:"AGENT_TZ" default:"UTC"`
 	AgentTickInterval   string `envconfig:"AGENT_TICK_INTERVAL" default:"1m"`
 	ExpoPushBaseURL     string `envconfig:"EXPO_PUSH_BASE_URL" default:"https://exp.host"`
+
+	// M3.2: stream fetch trickle.
+	StreamRecentWeeks int `envconfig:"STREAM_RECENT_WEEKS" default:"12"`
+	StreamFetchBudget int `envconfig:"STREAM_FETCH_BUDGET" default:"10"`
 }
 
 // Load reads .env (if present) into the process environment, then maps env
