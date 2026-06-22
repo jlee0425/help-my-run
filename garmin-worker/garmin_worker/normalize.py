@@ -151,7 +151,7 @@ def build_output(
     body_battery: list,
     rhr: list,
     vo2max: list,
-    activities: list,
+    activities: list = (),
 ) -> dict:
     """Assemble the full worker stdout object (CONTRACTS §2.1).
 

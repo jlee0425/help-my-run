@@ -90,7 +90,7 @@ def test_main_dry_run_stdout_is_single_json_object(capsys):
     obj, end = decoder.raw_decode(out.lstrip())
     assert out.lstrip()[end:].strip() == ""
     assert set(obj.keys()) == {
-        "since", "until", "fetched_at", "sleep", "hrv", "body_battery", "rhr", "vo2max",
+        "since", "until", "fetched_at", "sleep", "hrv", "body_battery", "rhr", "vo2max", "activities",
     }
 
 

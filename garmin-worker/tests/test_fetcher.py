@@ -6,11 +6,12 @@ from garmin_worker import fetcher
 class _MockClient:
     """Mock GarminClient: deterministic per-date data, records calls."""
 
-    def __init__(self, hrv_map=None, vo2max_map=None, raise_on=None):
+    def __init__(self, hrv_map=None, vo2max_map=None, raise_on=None, activities=None):
         self.calls = []
         self._hrv_map = hrv_map or {}
         self._vo2max_map = vo2max_map or {}
         self._raise_on = raise_on  # (method_name, exception) to raise
+        self._activities = activities  # None -> default one running element
 
     def _maybe_raise(self, method):
         if self._raise_on and self._raise_on[0] == method:
@@ -48,6 +49,21 @@ class _MockClient:
             return self._vo2max_map[cdate]
         return [{"generic": {"calendarDate": cdate, "vo2MaxValue": 50.0}, "cycling": None}]
 
+    def get_activities_by_date(self, startdate, enddate=None, activitytype=None):
+        self.calls.append(("activities", startdate, enddate, activitytype))
+        self._maybe_raise("get_activities_by_date")
+        if self._activities is not None:
+            return self._activities
+        return [
+            {
+                "activityId": 14820001234,
+                "startTimeGMT": "2026-06-22 05:00:00",
+                "duration": 3300.0,
+                "distance": 10000.0,
+                "activityType": {"typeKey": "running"},
+            }
+        ]
+
 
 def _noop_sleep(_):
     return None
@@ -60,7 +76,7 @@ def test_run_fetch_top_level_shape_and_echo():
         fetched_at="2026-06-15T05:00:12Z", sleep_fn=_noop_sleep,
     )
     assert list(out.keys()) == [
-        "since", "until", "fetched_at", "sleep", "hrv", "body_battery", "rhr", "vo2max",
+        "since", "until", "fetched_at", "sleep", "hrv", "body_battery", "rhr", "vo2max", "activities",
     ]
     assert out["since"] == "2026-06-14"
     assert out["until"] == "2026-06-15"
@@ -161,3 +177,68 @@ def test_run_fetch_omits_vo2max_null_days():
     )
     assert [v["date"] for v in out["vo2max"]] == ["2026-06-15"]  # 06-14 omitted (no value)
     assert out["vo2max"][0]["vo2max"] == 52.0
+
+
+def test_run_fetch_top_level_shape_includes_activities():
+    mc = _MockClient()
+    out = fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="2026-06-15T05:00:12Z", sleep_fn=_noop_sleep,
+    )
+    assert list(out.keys()) == [
+        "since", "until", "fetched_at", "sleep", "hrv", "body_battery",
+        "rhr", "vo2max", "activities",
+    ]
+
+
+def test_run_fetch_normalizes_activities():
+    mc = _MockClient()
+    out = fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="t", sleep_fn=_noop_sleep,
+    )
+    assert len(out["activities"]) == 1
+    a = out["activities"][0]
+    assert a["garmin_activity_id"] == 14820001234
+    assert a["start_time"] == "2026-06-22 05:00:00"
+    assert a["duration_s"] == 3300.0
+    assert a["distance_m"] == 10000.0
+    assert a["activity_type"] == "running"
+    assert "raw_json" in a
+
+
+def test_run_fetch_activities_uses_running_filter_over_window():
+    mc = _MockClient()
+    fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="t", sleep_fn=_noop_sleep,
+    )
+    act_calls = [c for c in mc.calls if c[0] == "activities"]
+    # one call, whole window, run-type filtered server-side.
+    assert act_calls == [("activities", "2026-06-14", "2026-06-15", "running")]
+
+
+def test_run_fetch_skips_activities_without_id():
+    mc = _MockClient(activities=[
+        {"activityId": 1, "startTimeGMT": "2026-06-22 05:00:00",
+         "duration": 100.0, "distance": 200.0, "activityType": {"typeKey": "running"}},
+        {"startTimeGMT": "2026-06-22 06:00:00"},  # no activityId -> skipped
+        "not-a-dict",                              # non-dict -> skipped
+    ])
+    out = fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="t", sleep_fn=_noop_sleep,
+    )
+    assert [a["garmin_activity_id"] for a in out["activities"]] == [1]
+
+
+def test_run_fetch_activities_failure_degrades_to_empty():
+    # A list-fetch failure must NOT fail the whole recovery sync (spec §10).
+    mc = _MockClient(raise_on=("get_activities_by_date", RuntimeError("acts boom")))
+    out = fetcher.run_fetch(
+        mc, since="2026-06-14", until="2026-06-15",
+        fetched_at="t", sleep_fn=_noop_sleep,
+    )
+    assert out["activities"] == []
+    # Other sources still populated (degrade is isolated to activities).
+    assert len(out["sleep"]) == 2

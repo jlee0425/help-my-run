@@ -71,6 +71,18 @@ def run_fetch(
         if i < len(dates) - 1:
             sleep_fn(_PER_DAY_DELAY_S)
 
+    # Garmin activities list: one run-type-filtered call over the whole window.
+    # A list-fetch failure must NOT fail the whole recovery sync (spec §10).
+    try:
+        raw_acts = client.get_activities_by_date(since, until, "running") or []
+        activities = [
+            normalize.normalize_garmin_activity(el)
+            for el in raw_acts
+            if isinstance(el, dict) and el.get("activityId") is not None
+        ]
+    except Exception:
+        activities = []
+
     return normalize.build_output(
         since=since,
         until=until,
@@ -80,6 +92,7 @@ def run_fetch(
         body_battery=body_battery,
         rhr=rhr,
         vo2max=vo2max,
+        activities=activities,
     )
 
 
