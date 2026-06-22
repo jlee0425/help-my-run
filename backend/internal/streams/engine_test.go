@@ -4,8 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/store"
@@ -282,5 +287,100 @@ func TestResolveGarminID(t *testing.T) {
 				t.Errorf("resolveGarminID = (%d,%v), want (%d,%v)", gid, ok, tt.wantID, tt.wantOK)
 			}
 		})
+	}
+}
+
+func TestFetchAndAnalyzeGarminFallbackActivates(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh for the FIT runner stub")
+	}
+	const stravaID = int64(14820001234)
+	const garminID = int64(555)
+	const startISO = "2026-06-22T05:00:00Z"
+
+	s := newStreamsStore(t)
+
+	// (1) Strava activity row (so resolveGarminID can load start/duration/distance).
+	if err := s.UpsertActivity(store.Activity{
+		StravaID: stravaID, Name: "no-HR run", Type: "Run",
+		StartTime: startISO, DistanceM: 5000, MovingTimeS: 1800, ElapsedTimeS: 1850, RawJSON: "{}",
+	}); err != nil {
+		t.Fatalf("upsert activity: %v", err)
+	}
+
+	// (2) Seeded garmin_activities row that matches within tolerance (run-type).
+	if err := s.UpsertGarminActivity(store.GarminActivityRow{
+		GarminActivityID: garminID, StartTime: "2026-06-22T05:00:20Z",
+		DurationS: f64p(1805), DistanceM: f64p(5010), ActivityType: strp("running"), RawJSON: "null",
+	}); err != nil {
+		t.Fatalf("upsert garmin activity: %v", err)
+	}
+
+	// (3) Non-expired Strava token so accessToken() does NOT attempt a refresh HTTP call.
+	if err := s.SaveStravaTokens(store.StravaTokens{
+		AccessToken: "live-token", RefreshToken: "refresh", ExpiresAt: time.Now().Add(time.Hour).Unix(),
+		Scope: "read", AthleteID: 1,
+	}); err != nil {
+		t.Fatalf("save tokens: %v", err)
+	}
+
+	// (4) Strava streams HTTP stub: NO "heartrate" key -> a no-HR stream.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"time":{"data":[0,1,2,3]},"velocity_smooth":{"data":[2.0,2.0,2.0,2.0]},"distance":{"data":[0,2,4,6]}}`))
+	}))
+	t.Cleanup(srv.Close)
+	sc := strava.NewWithBase("1", "x", "http://cb", srv.URL)
+
+	// (5) FIT runner stub: a /bin/sh script echoing the FIT JSON WITH HR. It
+	// asserts it was called with the resolved garmin id + the strava echo id.
+	const fitOut = `{"activity_id":14820001234,"source":"garmin","fetched_at":"2026-06-22T05:00:12Z","series":{"t":[0,1,2,3],"hr":[140,142,150,152],"v":[2.0,2.0,2.0,2.0],"dist":[0,2,4,6]}}`
+	script := filepath.Join(t.TempDir(), "fitstub.sh")
+	body := "#!/bin/sh\n" +
+		"echo \"$@\" | grep -q -- '--activity-id 555' || { echo 'missing --activity-id 555' 1>&2; exit 2; }\n" +
+		"echo \"$@\" | grep -q -- '--echo-id 14820001234' || { echo 'missing --echo-id 14820001234' 1>&2; exit 2; }\n" +
+		"echo '" + fitOut + "'\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatalf("write fit stub: %v", err)
+	}
+	runner := garmin.Runner{Python: "/bin/sh", Script: script}
+
+	// matchToleranceS=120: the 20s start delta is within tolerance.
+	e := New(s, sc, runner, nil, 120)
+
+	got, err := e.FetchAndAnalyze(context.Background(), stravaID)
+	if err != nil {
+		t.Fatalf("FetchAndAnalyze error = %v", err)
+	}
+
+	// Source flipped to garmin (the fallback supplied HR via the .FIT).
+	if got.Source != "garmin" {
+		t.Errorf("Source = %q, want garmin (FIT fallback activated)", got.Source)
+	}
+	if !got.HasHR {
+		t.Errorf("HasHR = false, want true (Garmin .FIT carried HR)")
+	}
+	// Time-in-zone present (one bucket per zone) and decoupling computed.
+	if len(got.TimeInZone) == 0 {
+		t.Errorf("TimeInZone empty, want zone buckets from the Garmin HR series")
+	}
+	if got.DecouplingPct == nil {
+		t.Errorf("DecouplingPct = nil, want computed (4-sample HR+pace series)")
+	}
+
+	// The stored raw stream is persisted with source=garmin.
+	raw, err := s.GetActivityStream(stravaID)
+	if err != nil {
+		t.Fatalf("GetActivityStream: %v", err)
+	}
+	if raw.Source != "garmin" {
+		t.Errorf("stored activity_streams.source = %q, want garmin", raw.Source)
+	}
+	ser, err := DecompressSeries(raw.SeriesGz)
+	if err != nil {
+		t.Fatalf("decompress stored series: %v", err)
+	}
+	if len(ser.HR) != 4 || ser.HR[0] != 140 {
+		t.Errorf("stored series.HR = %v, want [140 142 150 152] (from the .FIT)", ser.HR)
 	}
 }
