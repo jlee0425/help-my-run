@@ -36,6 +36,7 @@ func newProgressServer(t *testing.T, fp *fakeProgress) http.Handler {
 		Agent:    &fakeAgent{},
 		Pusher:   &fakePusher{},
 		Progress: fp,
+		Streams:  &fakeStreams{},
 	}
 	return NewRouter(deps)
 }

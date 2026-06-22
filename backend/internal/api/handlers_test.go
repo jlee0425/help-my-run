@@ -38,6 +38,7 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 		Agent:    &fakeAgent{},
 		Pusher:   &fakePusher{},
 		Progress: &fakeProgress{},
+		Streams:  &fakeStreams{},
 	}
 	return NewRouter(deps), s
 }

@@ -16,6 +16,7 @@ import (
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
+	"help-my-run/backend/internal/streams"
 )
 
 // SyncFunc runs both syncs and returns flattened per-source results:
@@ -54,6 +55,16 @@ type Progress interface {
 	Analyze(ctx context.Context, weeks int) (progress.ProgressRead, error)
 }
 
+// Streams is the M3.2 streams-engine seam, injected from main.go (avoids an
+// import cycle: api must not import the concrete streams.Engine). *streams.Engine
+// satisfies it structurally. GetOrComputeAnalysis returns the cached analysis
+// (recomputing from raw on a zone change); FetchAndAnalyze fetch-if-missing +
+// computes + caches + returns.
+type Streams interface {
+	GetOrComputeAnalysis(ctx context.Context, activityID int64) (streams.StreamAnalysis, error)
+	FetchAndAnalyze(ctx context.Context, activityID int64) (streams.StreamAnalysis, error)
+}
+
 // Deps are the handler dependencies injected by main.go (and tests).
 type Deps struct {
 	Store    *store.Store
@@ -65,6 +76,7 @@ type Deps struct {
 	Agent    Agent    // M2: daily loop (POST /api/agent/run)
 	Pusher   Pusher   // M2: push transport
 	Progress Progress // M3.1: progress engine (GET /api/progress, POST /api/progress/analyze)
+	Streams  Streams  // M3.2: streams engine (GET .../analysis, POST .../stream/fetch)
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.

@@ -185,3 +185,28 @@ type todayResponseDTO struct {
 	Source           string              `json:"source"`
 	Stale            bool                `json:"stale"`
 }
+
+// --- M3.2 /api/activities/{id}/analysis + /stream/fetch (snake_case wire JSON) ---
+type zoneTimeDTO struct {
+	Zone    int     `json:"zone"`
+	Seconds float64 `json:"seconds"`
+	Pct     float64 `json:"pct"`
+}
+type zoneBoundsDTO struct {
+	Z1Hi float64 `json:"z1_hi"`
+	Z2Hi float64 `json:"z2_hi"`
+	Z3Hi float64 `json:"z3_hi"`
+	Z4Hi float64 `json:"z4_hi"`
+}
+type streamAnalysisDTO struct {
+	ActivityID    int64         `json:"activity_id"`
+	HasStream     bool          `json:"has_stream"`
+	HasHR         bool          `json:"has_hr"`
+	TimeInZone    []zoneTimeDTO `json:"time_in_zone"`
+	DecouplingPct *float64      `json:"decoupling_pct"`
+	PaHRFirst     *float64      `json:"pa_hr_first"`
+	PaHRSecond    *float64      `json:"pa_hr_second"`
+	Zones         zoneBoundsDTO `json:"zones"`
+	Source        string        `json:"source"`
+	ComputedAt    string        `json:"computed_at"`
+}
