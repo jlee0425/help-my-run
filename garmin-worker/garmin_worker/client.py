@@ -101,3 +101,9 @@ class GarminClient:
         """Download the ORIGINAL uploaded file (a ZIP of the .fit) for an activity."""
         from garminconnect import ActivityDownloadFormat  # local import
         return self._g.download_activity(activity_id, ActivityDownloadFormat.ORIGINAL)
+
+    def get_activities_by_date(
+        self, startdate: str, enddate: Optional[str] = None,
+        activitytype: Optional[str] = None, sortorder: Optional[str] = None,
+    ) -> list:
+        return self._g.get_activities_by_date(startdate, enddate, activitytype, sortorder)

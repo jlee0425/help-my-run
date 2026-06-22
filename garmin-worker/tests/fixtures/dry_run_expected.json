@@ -20,5 +20,9 @@
   "vo2max": [
     {"date": "2026-06-14", "vo2max": 51.0, "raw_json": {"userId": 1, "generic": {"calendarDate": "2026-06-14", "vo2MaxValue": 51.0, "fitnessAge": 30}, "cycling": null}},
     {"date": "2026-06-15", "vo2max": 52.0, "raw_json": {"userId": 1, "generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0, "fitnessAge": 30}, "cycling": null}}
+  ],
+  "activities": [
+    {"garmin_activity_id": 14820001234, "start_time": "2026-06-14 05:00:00", "duration_s": 3300.0, "distance_m": 10000.0, "activity_type": "running", "raw_json": {"activityId": 14820001234, "startTimeGMT": "2026-06-14 05:00:00", "duration": 3300.0, "distance": 10000.0, "activityType": {"typeKey": "running"}}},
+    {"garmin_activity_id": 14820005678, "start_time": "2026-06-15 06:00:00", "duration_s": 2700.0, "distance_m": 8000.0, "activity_type": "trail_running", "raw_json": {"activityId": 14820005678, "startTimeGMT": "2026-06-15 06:00:00", "duration": 2700.0, "distance": 8000.0, "activityType": {"typeKey": "trail_running"}}}
   ]
 }

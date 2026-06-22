@@ -94,6 +94,10 @@ _DRY_VO2MAX_RAW = {
     "2026-06-14": {"userId": 1, "generic": {"calendarDate": "2026-06-14", "vo2MaxValue": 51.0, "fitnessAge": 30}, "cycling": None},
     "2026-06-15": {"userId": 1, "generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0, "fitnessAge": 30}, "cycling": None},
 }
+_DRY_ACTIVITIES_RAW = [
+    {"activityId": 14820001234, "startTimeGMT": "2026-06-14 05:00:00", "duration": 3300.0, "distance": 10000.0, "activityType": {"typeKey": "running"}},
+    {"activityId": 14820005678, "startTimeGMT": "2026-06-15 06:00:00", "duration": 2700.0, "distance": 8000.0, "activityType": {"typeKey": "trail_running"}},
+]
 
 
 def _run_dry_fetch(since: str, until: str) -> dict:
@@ -103,6 +107,7 @@ def _run_dry_fetch(since: str, until: str) -> dict:
     body_battery = [normalize.normalize_body_battery_day(e["date"], e) for e in _DRY_BB_RANGE]
     rhr = [normalize.normalize_rhr_day(d, raw) for d, raw in sorted(_DRY_STATS_RAW.items())]
     vo2max = [normalize.normalize_vo2max_day(d, raw) for d, raw in sorted(_DRY_VO2MAX_RAW.items())]
+    activities = [normalize.normalize_garmin_activity(el) for el in _DRY_ACTIVITIES_RAW]
     return normalize.build_output(
         since=since,
         until=until,
@@ -112,6 +117,7 @@ def _run_dry_fetch(since: str, until: str) -> dict:
         body_battery=body_battery,
         rhr=rhr,
         vo2max=vo2max,
+        activities=activities,
     )
 
 
