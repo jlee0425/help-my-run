@@ -132,14 +132,14 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 	if res.Status != "ok" || res.Error != nil {
 		t.Fatalf("result = %+v, want ok", res)
 	}
-	// Fixture has 2 sleep + 1 hrv + 2 bb + 2 rhr + 2 vo2max = 9 upserts.
-	if res.Synced != 9 {
-		t.Errorf("synced = %d, want 9", res.Synced)
+	// Fixture has 2 sleep + 1 hrv + 2 bb + 2 rhr + 2 vo2max + 2 activities = 11 upserts.
+	if res.Synced != 11 {
+		t.Errorf("synced = %d, want 11", res.Synced)
 	}
 
 	counts := map[string]int{
 		"garmin_sleep": 0, "garmin_hrv": 0, "garmin_body_battery": 0, "garmin_rhr": 0,
-		"garmin_vo2max": 0,
+		"garmin_vo2max": 0, "garmin_activities": 0,
 	}
 	for tbl := range counts {
 		var n int
@@ -150,8 +150,8 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 	}
 	if counts["garmin_sleep"] != 2 || counts["garmin_hrv"] != 1 ||
 		counts["garmin_body_battery"] != 2 || counts["garmin_rhr"] != 2 ||
-		counts["garmin_vo2max"] != 2 {
-		t.Errorf("counts = %+v, want sleep2 hrv1 bb2 rhr2 vo2max2", counts)
+		counts["garmin_vo2max"] != 2 || counts["garmin_activities"] != 2 {
+		t.Errorf("counts = %+v, want sleep2 hrv1 bb2 rhr2 vo2max2 activities2", counts)
 	}
 
 	// raw_json persisted from the worker.
@@ -159,6 +159,15 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 	_ = s.DB.QueryRow(`SELECT raw_json FROM garmin_sleep WHERE date='2026-06-14'`).Scan(&raw)
 	if !strings.Contains(raw, "dailySleepDTO") {
 		t.Errorf("sleep raw_json = %q, want it to contain dailySleepDTO", raw)
+	}
+
+	// Activity ingested with run-type + start_time persisted.
+	var atype, ast string
+	_ = s.DB.QueryRow(
+		`SELECT activity_type, start_time FROM garmin_activities WHERE garmin_activity_id=?`,
+		14820001234).Scan(&atype, &ast)
+	if atype != "running" || ast != "2026-06-14 05:00:00" {
+		t.Errorf("garmin_activity 14820001234 = (%q,%q), want (running, 2026-06-14 05:00:00)", atype, ast)
 	}
 
 	sl, _ := s.GetSyncLog("garmin")
@@ -316,7 +325,7 @@ func TestSyncGarminBackfillWindowIs84Days(t *testing.T) {
 	argfile := filepath.Join(dir, "args.txt")
 	script := filepath.Join(dir, "capture.sh")
 	body := "#!/bin/sh\necho \"$@\" > '" + argfile + "'\n" +
-		`echo '{"since":"x","until":"x","fetched_at":"x","sleep":[],"hrv":[],"body_battery":[],"rhr":[],"vo2max":[]}'` + "\n"
+		`echo '{"since":"x","until":"x","fetched_at":"x","sleep":[],"hrv":[],"body_battery":[],"rhr":[],"vo2max":[],"activities":[]}'` + "\n"
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
 		t.Fatalf("write stub: %v", err)
 	}
