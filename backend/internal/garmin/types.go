@@ -59,3 +59,19 @@ type Vo2maxDay struct {
 	VO2Max  *float64        `json:"vo2max"`
 	RawJSON json.RawMessage `json:"raw_json"`
 }
+
+// FITStreamOutput is the worker `stream` subcommand stdout JSON (§2.6).
+type FITStreamOutput struct {
+	ActivityID int64     `json:"activity_id"` // echoed Strava id (store PK)
+	Source     string    `json:"source"`      // "garmin"
+	FetchedAt  string    `json:"fetched_at"`
+	Series     FITSeries `json:"series"`
+}
+
+// FITSeries is the normalized struct-of-arrays series (matches streams.Series).
+type FITSeries struct {
+	T    []float64 `json:"t"`
+	HR   []float64 `json:"hr"`
+	V    []float64 `json:"v"`
+	Dist []float64 `json:"dist"`
+}

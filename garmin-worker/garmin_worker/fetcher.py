@@ -81,3 +81,13 @@ def run_fetch(
         rhr=rhr,
         vo2max=vo2max,
     )
+
+
+def run_fit_fetch(client, *, activity_id: str, echo_id: int, fetched_at: str) -> dict:
+    """Download + parse one activity's FIT -> the §2.6 stream object.
+
+    activity_id is GARMIN's download id; echo_id is the Strava id echoed back so
+    the Go store row keys correctly (§7 id mapping)."""
+    raw = client.download_activity_original(activity_id)
+    series = normalize.normalize_fit_stream(raw)
+    return normalize.build_fit_output(activity_id=echo_id, fetched_at=fetched_at, series=series)

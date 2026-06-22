@@ -100,3 +100,32 @@ def test_main_dry_run_bad_date_exits_nonzero_with_stderr(capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "2026/06/14" in captured.err or "date" in captured.err.lower()
+
+
+# --------------------------------------------------------------------------
+# stream subcommand
+# --------------------------------------------------------------------------
+def test_parser_stream_args():
+    p = cli.build_parser()
+    args = p.parse_args(["stream", "--activity-id", "555", "--echo-id", "777"])
+    assert args.command == "stream"
+    assert args.activity_id == "555"
+    assert args.echo_id == "777"
+
+
+def test_parser_stream_requires_activity_id():
+    p = cli.build_parser()
+    with pytest.raises(SystemExit):
+        p.parse_args(["stream", "--echo-id", "1"])
+
+
+def test_main_stream_dry_run_prints_contract_json(capsys):
+    rc = cli.main(["stream", "--activity-id", "555", "--echo-id", "14820001234", "--dry-run"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    out = json.loads(captured.out)
+    assert list(out.keys()) == ["activity_id", "source", "fetched_at", "series"]
+    assert out["activity_id"] == 14820001234   # echoed Strava id, not the Garmin id
+    assert out["source"] == "garmin"
+    assert set(out["series"].keys()) == {"t", "hr", "v", "dist"}
