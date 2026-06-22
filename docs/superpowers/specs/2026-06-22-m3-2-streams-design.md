@@ -33,6 +33,12 @@ and as a trend.
 
 1. Each run's stream is fetched (Strava primary; Garmin `.FIT` fallback when Strava has no
    HR), stored **gzipped once**, and never re-fetched.
+   > **Note (M3.2 scope):** the Strava path is fully working; the Garmin `.FIT` fallback is
+   > **infrastructure landed; activation deferred to an id-mapping slice** — there is no
+   > Strava↔Garmin activity-id mapping in the M3.2 data model yet, so the fallback ships
+   > DORMANT (built + unit-tested but never fires at runtime). Until the mapping exists,
+   > runs with no Strava HR show the no-HR state. DoD for §3.1 = "Strava path fully working;
+   > Garmin fallback dormant".
 2. **Recent-window auto-fetch** (~12 weeks) is trickled during sync within Strava rate
    limits; any older run can be fetched **on-demand**.
 3. Per run: **time-in-zone** (minutes + % per HR zone using the athlete's profile zones) and
@@ -56,7 +62,13 @@ and as a trend.
   - Garmin `.FIT` fallback: the Python worker downloads + parses the per-second record
     stream (timestamp, heart_rate, speed/enhanced_speed, distance) when Strava lacks HR. The
     FIT-parsing approach (library + method) is verified at plan time against the installed
-    `garminconnect`/FIT tooling.
+    `garminconnect`/FIT tooling (`garmin-fit-sdk==21.208.0`, pinned).
+    > **Infrastructure landed; activation deferred to an id-mapping slice.** This fallback
+    > ships DORMANT in M3.2: it requires a Strava↔Garmin activity-id mapping (absent from the
+    > M3.2 data model), so the worker `stream` subcommand + `RunGarminFetchFIT` + the
+    > `FetchAndAnalyze` call site are built and unit-tested but never fire at runtime (the
+    > id-resolver returns "no Garmin id"). A future slice (ingest Garmin activity ids + match
+    > by `start_time`) activates it; the runtime path in M3.2 is Strava-only.
   - Both normalize to a `{t, hr, v, dist}` series; rate-limit-aware **trickle** + an
     on-demand path.
 - **Streams engine** (`backend/internal/streams`) — *deterministic Go*. From a decompressed
