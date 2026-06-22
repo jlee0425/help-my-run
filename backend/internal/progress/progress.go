@@ -393,8 +393,8 @@ func ComputeProgress(
 	}
 
 	// weekly_load is CONTEXT (always filled with 0.0, never nil), not a fitness
-	// verdict — exclude it so the gate requires >=2 of the FOUR real fitness
-	// signals (pace_at_hr, vo2max, resting_hr, hrv_baseline).
+	// verdict — exclude it so the gate requires >=2 of the FIVE real fitness
+	// signals (pace_at_hr, vo2max, resting_hr, hrv_baseline, decoupling).
 	enough := 0
 	for _, s := range signals {
 		if s.Key == SignalWeeklyLoad {
