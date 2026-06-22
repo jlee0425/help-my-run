@@ -45,6 +45,9 @@ type Config struct {
 	// M3.2: stream fetch trickle.
 	StreamRecentWeeks int `envconfig:"STREAM_RECENT_WEEKS" default:"12"`
 	StreamFetchBudget int `envconfig:"STREAM_FETCH_BUDGET" default:"10"`
+
+	// M3.2.1: Garmin .FIT fallback start-time match tolerance (seconds).
+	GarminMatchToleranceS int `envconfig:"GARMIN_MATCH_TOLERANCE_S" default:"120"`
 }
 
 // Load reads .env (if present) into the process environment, then maps env

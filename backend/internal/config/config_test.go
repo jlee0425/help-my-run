@@ -227,3 +227,35 @@ func TestM2ConfigOverrides(t *testing.T) {
 		t.Errorf("overrides not applied: %+v", c)
 	}
 }
+
+func TestLoadGarminMatchToleranceDefault(t *testing.T) {
+	t.Setenv("STRAVA_CLIENT_ID", "id")
+	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
+	t.Setenv("STRAVA_REDIRECT_URL", "http://cb")
+	t.Setenv("API_TOKEN", "tok")
+	os.Unsetenv("GARMIN_MATCH_TOLERANCE_S")
+
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if c.GarminMatchToleranceS != 120 {
+		t.Errorf("GarminMatchToleranceS = %d, want 120 (default)", c.GarminMatchToleranceS)
+	}
+}
+
+func TestLoadGarminMatchToleranceOverride(t *testing.T) {
+	t.Setenv("STRAVA_CLIENT_ID", "id")
+	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
+	t.Setenv("STRAVA_REDIRECT_URL", "http://cb")
+	t.Setenv("API_TOKEN", "tok")
+	t.Setenv("GARMIN_MATCH_TOLERANCE_S", "45")
+
+	c, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if c.GarminMatchToleranceS != 45 {
+		t.Errorf("GarminMatchToleranceS = %d, want 45 (override)", c.GarminMatchToleranceS)
+	}
+}
