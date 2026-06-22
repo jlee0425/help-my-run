@@ -12,6 +12,7 @@ jest.mock('expo-router', () => {
   return {
     Link: ({ children }: { children: React.ReactNode }) => <RNText>{children}</RNText>,
     Stack: { Screen: () => null },
+    useLocalSearchParams: () => ({}),
   };
 });
 
@@ -119,6 +120,12 @@ describe('HomeScreen', () => {
     const { getByText } = await render(<HomeScreen />);
     expect(getByText('Morning Run')).toBeTruthy();
     expect(getByText('Evening Jog')).toBeTruthy();
+  });
+
+  it('renders a tappable run row carrying the activity testID', async () => {
+    const { getByTestId } = await render(<HomeScreen />);
+    expect(getByTestId('run-row-14820001234')).toBeTruthy();
+    expect(getByTestId('run-row-14820009999')).toBeTruthy();
   });
 
   it('renders one row per recent recovery day by date', async () => {

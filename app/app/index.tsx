@@ -117,13 +117,15 @@ export default function HomeScreen() {
         keyExtractor={(item: Activity) => String(item.strava_id)}
         ListEmptyComponent={<Text style={styles.empty}>No runs yet</Text>}
         renderItem={({ item }: { item: Activity }) => (
-          <View style={styles.row}>
-            <Text style={styles.rowTitle}>{item.name}</Text>
-            <Text style={styles.rowSub}>
-              {fmtKm(item.distance_m)} · {Math.round(item.moving_time_s / 60)} min
-              {item.avg_hr != null ? ` · ${Math.round(item.avg_hr)} bpm` : ''}
-            </Text>
-          </View>
+          <Link href={{ pathname: '/run/[id]', params: { id: String(item.strava_id) } }} asChild>
+            <Pressable testID={`run-row-${item.strava_id}`} style={styles.row}>
+              <Text style={styles.rowTitle}>{item.name}</Text>
+              <Text style={styles.rowSub}>
+                {fmtKm(item.distance_m)} · {Math.round(item.moving_time_s / 60)} min
+                {item.avg_hr != null ? ` · ${Math.round(item.avg_hr)} bpm` : ''}
+              </Text>
+            </Pressable>
+          </Link>
         )}
       />
 
