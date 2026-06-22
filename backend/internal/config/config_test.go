@@ -20,6 +20,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 		"PYTHON_BIN", "WORKER_SCRIPT", "ANTHROPIC_API_KEY",
 		"CLAUDE_BIN", "CLAUDE_MODEL", "IMAGE_DIR",
 		"STREAM_RECENT_WEEKS", "STREAM_FETCH_BUDGET",
+		"CHAT_HISTORY_TURNS",
 	}
 	for _, k := range all {
 		// t.Setenv first to register restoration of the original value on
@@ -257,5 +258,31 @@ func TestLoadGarminMatchToleranceOverride(t *testing.T) {
 	}
 	if c.GarminMatchToleranceS != 45 {
 		t.Errorf("GarminMatchToleranceS = %d, want 45 (override)", c.GarminMatchToleranceS)
+	}
+}
+
+func TestM3_3ChatConfigDefault(t *testing.T) {
+	setEnv(t, requiredEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.ChatHistoryTurns != 6 {
+		t.Errorf("ChatHistoryTurns = %d, want default 6", cfg.ChatHistoryTurns)
+	}
+}
+
+func TestM3_3ChatConfigOverride(t *testing.T) {
+	env := requiredEnv()
+	env["CHAT_HISTORY_TURNS"] = "10"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.ChatHistoryTurns != 10 {
+		t.Errorf("ChatHistoryTurns = %d, want 10", cfg.ChatHistoryTurns)
 	}
 }

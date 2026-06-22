@@ -48,6 +48,9 @@ type Config struct {
 
 	// M3.2.1: Garmin .FIT fallback start-time match tolerance (seconds).
 	GarminMatchToleranceS int `envconfig:"GARMIN_MATCH_TOLERANCE_S" default:"120"`
+
+	// M3.3: chat rolling-history turns sent per claude -p call.
+	ChatHistoryTurns int `envconfig:"CHAT_HISTORY_TURNS" default:"6"`
 }
 
 // Load reads .env (if present) into the process environment, then maps env
