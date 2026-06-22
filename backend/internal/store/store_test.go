@@ -509,3 +509,79 @@ func TestUpsertGarminActivity(t *testing.T) {
 		t.Errorf("activity_type after re-upsert = %q, want trail_running", gotType)
 	}
 }
+
+func TestFindGarminActivitiesNear(t *testing.T) {
+	s := newTestStore(t)
+
+	// Seed: query anchor is RFC3339 "2026-06-22T05:00:00Z".
+	// A) exactly on time, running                          -> in window, delta 0
+	// B) +60s, running                                     -> in window, delta 60
+	// C) +119s, treadmill_running                          -> in window (run-type), delta 119
+	// D) +200s, running                                    -> OUTSIDE 120s window
+	// E) on time, cycling                                  -> run-type filtered OUT
+	mustUpsertGA(t, s, 1, "2026-06-22 05:00:00", f64p(3300), f64p(10000), "running")
+	mustUpsertGA(t, s, 2, "2026-06-22 05:01:00", f64p(3200), f64p(9800), "running")
+	mustUpsertGA(t, s, 3, "2026-06-22 05:01:59", f64p(3100), f64p(9500), "treadmill_running")
+	mustUpsertGA(t, s, 4, "2026-06-22 05:03:20", f64p(3300), f64p(10000), "running")
+	mustUpsertGA(t, s, 5, "2026-06-22 05:00:00", f64p(3300), f64p(40000), "cycling")
+
+	cands, err := s.FindGarminActivitiesNear("2026-06-22T05:00:00Z", 120)
+	if err != nil {
+		t.Fatalf("FindGarminActivitiesNear: %v", err)
+	}
+	// In-window run-type rows: 1, 2, 3 (NOT 4 outside window, NOT 5 cycling).
+	if len(cands) != 3 {
+		t.Fatalf("len = %d, want 3 (ids 1,2,3); got %+v", len(cands), cands)
+	}
+	// Ordered by absolute start-time delta ascending: 1 (0s), 2 (60s), 3 (119s).
+	if cands[0].GarminActivityID != 1 || cands[1].GarminActivityID != 2 || cands[2].GarminActivityID != 3 {
+		t.Errorf("order = [%d,%d,%d], want [1,2,3]",
+			cands[0].GarminActivityID, cands[1].GarminActivityID, cands[2].GarminActivityID)
+	}
+	// Candidate carries duration/distance for the engine tie-break.
+	if cands[0].DurationS == nil || *cands[0].DurationS != 3300 {
+		t.Errorf("cand[0].DurationS = %v, want 3300", cands[0].DurationS)
+	}
+	if cands[0].DistanceM == nil || *cands[0].DistanceM != 10000 {
+		t.Errorf("cand[0].DistanceM = %v, want 10000", cands[0].DistanceM)
+	}
+
+	// Tie-break shape: two equidistant candidates (±60s) -> both returned, both
+	// in window, caller resolves by duration/distance.
+	tie, err := s.FindGarminActivitiesNear("2026-06-22T05:00:30Z", 120)
+	if err != nil {
+		t.Fatalf("tie query: %v", err)
+	}
+	// At 05:00:30: id1 (-30s), id2 (+30s) both delta 30; id3 (+89s); id4 (+170s) out.
+	if len(tie) != 3 {
+		t.Fatalf("tie len = %d, want 3 (ids 1,2,3)", len(tie))
+	}
+	// First two are the equidistant pair (1 and 2 in either order), third is id3.
+	if tie[2].GarminActivityID != 3 {
+		t.Errorf("tie[2] = %d, want 3 (furthest in-window)", tie[2].GarminActivityID)
+	}
+	gotPair := map[int64]bool{tie[0].GarminActivityID: true, tie[1].GarminActivityID: true}
+	if !gotPair[1] || !gotPair[2] {
+		t.Errorf("tie pair = %v, want {1,2}", gotPair)
+	}
+
+	// No-match -> empty slice (not error).
+	none, err := s.FindGarminActivitiesNear("2026-06-22T09:00:00Z", 120)
+	if err != nil {
+		t.Fatalf("no-match query: %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("no-match len = %d, want 0", len(none))
+	}
+}
+
+// mustUpsertGA seeds one garmin_activities row or fails the test.
+func mustUpsertGA(t *testing.T, s *Store, id int64, start string, dur, dist *float64, atype string) {
+	t.Helper()
+	if err := s.UpsertGarminActivity(GarminActivityRow{
+		GarminActivityID: id, StartTime: start, DurationS: dur, DistanceM: dist,
+		ActivityType: strp(atype), RawJSON: "{}",
+	}); err != nil {
+		t.Fatalf("seed garmin_activity %d: %v", id, err)
+	}
+}
