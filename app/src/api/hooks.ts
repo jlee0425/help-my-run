@@ -4,7 +4,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import * as WebBrowser from 'expo-web-browser';
-import { apiGet, apiPost, apiPut, apiUpload } from './client';
+import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from './client';
 import type {
   Status,
   ActivitiesResponse,
@@ -22,6 +22,8 @@ import type {
   ProgressReport,
   ProgressRead,
   StreamAnalysis,
+  ChatMessage,
+  ChatHistory,
 } from './types';
 
 export function useStatus() {
@@ -199,6 +201,34 @@ export function useFetchStream(activityId: number) {
     onSuccess: (data) => {
       queryClient.setQueryData(['analysis', activityId], data);
       queryClient.invalidateQueries({ queryKey: ['progress'] });
+    },
+  });
+}
+
+export function useChatHistory(limit = 50) {
+  return useQuery({
+    queryKey: ['chat'],
+    queryFn: () => apiGet<ChatHistory>(`/api/chat?limit=${limit}`),
+  });
+}
+
+export function useSendChat() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { message: string }) =>
+      apiPost<ChatMessage>('/api/chat', body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat'] });
+    },
+  });
+}
+
+export function useClearChat() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiDelete<void>('/api/chat'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chat'] });
     },
   });
 }

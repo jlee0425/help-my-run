@@ -6,10 +6,11 @@ jest.mock('../client', () => ({
   apiGet: jest.fn(),
   apiPost: jest.fn(),
   apiPut: jest.fn(),
+  apiDelete: jest.fn(),
   apiUpload: jest.fn(),
 }));
 
-import { apiGet, apiPost, apiPut, apiUpload } from '../client';
+import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from '../client';
 import {
   useStatus,
   useActivities,
@@ -27,6 +28,9 @@ import {
   useRegisterPushToken,
   useProgress,
   useAnalyzeProgress,
+  useChatHistory,
+  useSendChat,
+  useClearChat,
 } from '../hooks';
 import type {
   Status,
@@ -42,12 +46,15 @@ import type {
   PushRegisterRequest,
   ProgressReport,
   ProgressRead,
+  ChatMessage,
+  ChatHistory,
 } from '../types';
 
 const mockApiGet = apiGet as jest.MockedFunction<typeof apiGet>;
 const mockApiPost = apiPost as jest.MockedFunction<typeof apiPost>;
 const mockApiPut = apiPut as jest.MockedFunction<typeof apiPut>;
 const mockApiUpload = apiUpload as jest.MockedFunction<typeof apiUpload>;
+const mockApiDelete = apiDelete as jest.MockedFunction<typeof apiDelete>;
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -356,5 +363,49 @@ describe('useAnalyzeProgress', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockApiPost).toHaveBeenCalledWith('/api/progress/analyze', { weeks: 12 });
     expect(result.current.data).toEqual(read);
+  });
+});
+
+describe('useChatHistory', () => {
+  it('GETs /api/chat with the default limit (50)', async () => {
+    const data: ChatHistory = {
+      messages: [{ role: 'user', content: 'hi', created_at: '2026-06-22T09:00:00Z' }],
+    };
+    mockApiGet.mockResolvedValue(data);
+    const { result } = await renderHook(() => useChatHistory(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/chat?limit=50');
+    expect(result.current.data).toEqual(data);
+  });
+
+  it('passes a custom limit', async () => {
+    mockApiGet.mockResolvedValue({ messages: [] });
+    const { result } = await renderHook(() => useChatHistory(10), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiGet).toHaveBeenCalledWith('/api/chat?limit=10');
+  });
+});
+
+describe('useSendChat', () => {
+  it('POSTs /api/chat with the message and returns the assistant turn', async () => {
+    const answer: ChatMessage = {
+      role: 'assistant', content: 'Your Z2 pace is improving.', created_at: '2026-06-22T09:14:00Z',
+    };
+    mockApiPost.mockResolvedValue(answer);
+    const { result } = await renderHook(() => useSendChat(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate({ message: 'How is my pace?' }); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiPost).toHaveBeenCalledWith('/api/chat', { message: 'How is my pace?' });
+    expect(result.current.data).toEqual(answer);
+  });
+});
+
+describe('useClearChat', () => {
+  it('DELETEs /api/chat', async () => {
+    mockApiDelete.mockResolvedValue(undefined);
+    const { result } = await renderHook(() => useClearChat(), { wrapper: createWrapper() });
+    await act(async () => { result.current.mutate(); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockApiDelete).toHaveBeenCalledWith('/api/chat');
   });
 });
