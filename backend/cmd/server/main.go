@@ -25,6 +25,7 @@ import (
 	"help-my-run/backend/internal/scheduler"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/strava"
+	"help-my-run/backend/internal/streams"
 	syncpkg "help-my-run/backend/internal/sync"
 )
 
@@ -42,6 +43,7 @@ type App struct {
 	Agent    *agent.Agent     // M2: daily readiness/adjust loop
 	Pusher   *push.Client     // M2: Expo push transport
 	Progress *progress.Engine // M3.1: deterministic trends + claude -p read
+	Streams  *streams.Engine  // M3.2: per-run stream fetch + time-in-zone/decoupling
 }
 
 // Wire builds the full application graph from config: opens + migrates the
@@ -61,8 +63,10 @@ func Wire(cfg *config.Config) (*App, error) {
 	runner := garmin.Runner{Python: cfg.PythonBin, Script: cfg.WorkerScript}
 	extraEnv := garminEnv(cfg)
 
+	streamsEngine := streams.New(s, stravaClient, runner, extraEnv)
+
 	syncFunc := func(ctx context.Context) (string, int, *string, string, int, *string) {
-		res := syncpkg.SyncAll(ctx, s, stravaClient, runner, extraEnv)
+		res := syncpkg.SyncAll(ctx, s, stravaClient, runner, extraEnv, streamTrickle(cfg, streamsEngine))
 		return res.Strava.Status, res.Strava.Synced, res.Strava.Error,
 			res.Garmin.Status, res.Garmin.Synced, res.Garmin.Error
 	}
@@ -95,6 +99,7 @@ func Wire(cfg *config.Config) (*App, error) {
 		Agent:    apiAgent{a: dailyAgent, store: s},
 		Pusher:   pushClient,
 		Progress: progressEngine,
+		Streams:  streamsEngine,
 	})
 
 	return &App{
@@ -107,7 +112,31 @@ func Wire(cfg *config.Config) (*App, error) {
 		Agent:    dailyAgent,
 		Pusher:   pushClient,
 		Progress: progressEngine,
+		Streams:  streamsEngine,
 	}, nil
+}
+
+// streamTrickleFetcher adapts *streams.Engine to sync.streamFetcher: the engine's
+// FetchAndAnalyze returns (StreamAnalysis, error) but the trickle only needs the
+// error (it fetches + caches as a side effect, ignoring the returned analysis).
+type streamTrickleFetcher struct{ e *streams.Engine }
+
+func (f streamTrickleFetcher) FetchAndAnalyze(ctx context.Context, activityID int64) error {
+	_, err := f.e.FetchAndAnalyze(ctx, activityID)
+	return err
+}
+
+// streamTrickle builds the recent-window trickle hook for SyncAll. A nil engine
+// yields a nil hook (trickle disabled).
+func streamTrickle(cfg *config.Config, e *streams.Engine) *syncpkg.StreamTrickle {
+	if e == nil {
+		return nil
+	}
+	return &syncpkg.StreamTrickle{
+		Fetcher: streamTrickleFetcher{e: e},
+		Weeks:   cfg.StreamRecentWeeks,
+		Budget:  cfg.StreamFetchBudget,
+	}
 }
 
 // garminEnv builds the env passed through to the worker subprocess.
@@ -187,7 +216,7 @@ func main() {
 	runner := app.Runner
 	extraEnv := garminEnv(cfg)
 	syncOnce := func(c context.Context) {
-		res := syncpkg.SyncAll(c, app.Store, stravaClient, runner, extraEnv)
+		res := syncpkg.SyncAll(c, app.Store, stravaClient, runner, extraEnv, streamTrickle(cfg, app.Streams))
 		log.Printf("sync: strava=%s/%d garmin=%s/%d",
 			res.Strava.Status, res.Strava.Synced, res.Garmin.Status, res.Garmin.Synced)
 	}

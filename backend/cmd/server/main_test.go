@@ -144,6 +144,25 @@ func TestWireInjectsProgress(t *testing.T) {
 	}
 }
 
+func TestWireServesStreamAnalysisRoute(t *testing.T) {
+	app, err := Wire(testCfg(t))
+	if err != nil {
+		t.Fatalf("Wire error = %v", err)
+	}
+	t.Cleanup(func() { _ = app.Store.Close() })
+
+	// GET /api/activities/{id}/analysis is bearer-protected and served by the
+	// injected streams engine. Not-fetched is 200 + has_stream:false (never 404),
+	// so a 404 here means the route was not wired.
+	req := httptest.NewRequest(http.MethodGet, "/api/activities/123/analysis", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusNotFound {
+		t.Fatalf("route not wired: got 404")
+	}
+}
+
 func TestWireTzdataLoadsSeoul(t *testing.T) {
 	_, err := loadAgentLocation("Asia/Seoul")
 	if err != nil {
