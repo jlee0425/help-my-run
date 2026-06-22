@@ -109,6 +109,9 @@ export default function HomeScreen() {
       <Link href="/progress" style={styles.link}>
         Progress
       </Link>
+      <Link href="/chat" style={styles.link}>
+        Chat
+      </Link>
 
       <Text style={styles.heading}>Recent runs</Text>
       <FlatList
