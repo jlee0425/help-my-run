@@ -30,6 +30,7 @@ func TestOpenAndMigrate(t *testing.T) {
 		"garmin_vo2max",
 		"sync_log",
 		"activity_streams", "stream_analyses", "stream_fetch_log",
+		"garmin_activities",
 	}
 	for _, tbl := range wantTables {
 		var name string
