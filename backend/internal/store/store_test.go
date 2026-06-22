@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -432,5 +433,79 @@ func TestM1MigrationSeedsProfile(t *testing.T) {
 	_, err := s.DB.Exec(`INSERT INTO athlete_profile (id, updated_at) VALUES (2, 'x')`)
 	if err == nil {
 		t.Error("inserting id=2 succeeded, want CHECK (id = 1) violation")
+	}
+}
+
+func TestUpsertGarminActivity(t *testing.T) {
+	s := newTestStore(t)
+
+	// Insert one row with all fields.
+	if err := s.UpsertGarminActivity(GarminActivityRow{
+		GarminActivityID: 14820001234,
+		StartTime:        "2026-06-22 05:00:00",
+		DurationS:        f64p(3300),
+		DistanceM:        f64p(10000),
+		ActivityType:     strp("running"),
+		RawJSON:          `{"activityId":14820001234}`,
+	}); err != nil {
+		t.Fatalf("UpsertGarminActivity insert: %v", err)
+	}
+
+	// Nullable fields stored as NULL when nil.
+	if err := s.UpsertGarminActivity(GarminActivityRow{
+		GarminActivityID: 14820005678,
+		StartTime:        "2026-06-21 06:00:00",
+		DurationS:        nil,
+		DistanceM:        nil,
+		ActivityType:     nil,
+		RawJSON:          "null",
+	}); err != nil {
+		t.Fatalf("UpsertGarminActivity null-fields: %v", err)
+	}
+
+	var n int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM garmin_activities`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("row count = %d, want 2", n)
+	}
+
+	// Verify stored values + NULL preservation.
+	var st, raw string
+	var dur, dist sql.NullFloat64
+	var atype sql.NullString
+	if err := s.DB.QueryRow(
+		`SELECT start_time, duration_s, distance_m, activity_type, raw_json
+		 FROM garmin_activities WHERE garmin_activity_id=?`, 14820005678).Scan(
+		&st, &dur, &dist, &atype, &raw); err != nil {
+		t.Fatalf("scan null row: %v", err)
+	}
+	if dur.Valid || dist.Valid || atype.Valid {
+		t.Errorf("null row: dur=%v dist=%v atype=%v, want all NULL", dur, dist, atype)
+	}
+	if raw != "null" {
+		t.Errorf("raw_json = %q, want %q", raw, "null")
+	}
+
+	// Re-upsert by garmin_activity_id -> update, not duplicate.
+	if err := s.UpsertGarminActivity(GarminActivityRow{
+		GarminActivityID: 14820001234,
+		StartTime:        "2026-06-22 05:00:30",
+		DurationS:        f64p(3400),
+		DistanceM:        f64p(10100),
+		ActivityType:     strp("trail_running"),
+		RawJSON:          `{"activityId":14820001234,"v":2}`,
+	}); err != nil {
+		t.Fatalf("re-upsert: %v", err)
+	}
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM garmin_activities`).Scan(&n)
+	if n != 2 {
+		t.Fatalf("after re-upsert count = %d, want 2 (idempotent by PK)", n)
+	}
+	var gotType string
+	_ = s.DB.QueryRow(`SELECT activity_type FROM garmin_activities WHERE garmin_activity_id=?`, 14820001234).Scan(&gotType)
+	if gotType != "trail_running" {
+		t.Errorf("activity_type after re-upsert = %q, want trail_running", gotType)
 	}
 }

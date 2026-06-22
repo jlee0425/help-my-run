@@ -253,3 +253,27 @@ func (s *Store) ListRecovery(days int) ([]RecoveryDay, error) {
 	}
 	return out, rows.Err()
 }
+
+// GarminActivityRow maps to garmin_activities.
+type GarminActivityRow struct {
+	GarminActivityID int64
+	StartTime        string
+	DurationS        *float64
+	DistanceM        *float64
+	ActivityType     *string
+	RawJSON          string
+}
+
+// UpsertGarminActivity upserts one garmin_activities row by garmin_activity_id.
+func (s *Store) UpsertGarminActivity(r GarminActivityRow) error {
+	_, err := s.DB.Exec(`
+		INSERT INTO garmin_activities
+			(garmin_activity_id, start_time, duration_s, distance_m, activity_type, raw_json)
+		VALUES (?,?,?,?,?,?)
+		ON CONFLICT(garmin_activity_id) DO UPDATE SET
+			start_time=excluded.start_time, duration_s=excluded.duration_s,
+			distance_m=excluded.distance_m, activity_type=excluded.activity_type,
+			raw_json=excluded.raw_json`,
+		r.GarminActivityID, r.StartTime, r.DurationS, r.DistanceM, r.ActivityType, r.RawJSON)
+	return err
+}
