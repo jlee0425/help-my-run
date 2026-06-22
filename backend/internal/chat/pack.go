@@ -49,7 +49,7 @@ func New(s *store.Store, c *llm.Client, p *progress.Engine, model string, histor
 // data sent to claude -p alongside the question. Summary-level only (no raw
 // streams). Serialized with json.Marshal (compact) onto stdin.
 type ChatContextPack struct {
-	GeneratedAt   string                  `json:"generated_at"`   // RFC3339 UTC
+	GeneratedAt   string                  `json:"generated_at"` // RFC3339 UTC
 	Profile       ProfilePack             `json:"profile"`
 	Signals       []progress.TrendSummary `json:"signals"`        // M3.1 trends, fixed order
 	Activities    []ActivityPack          `json:"activities"`     // last ~14 runs, summary fields
@@ -70,7 +70,7 @@ type ProfilePack struct {
 
 // ActivityPack is one recent run summarized (no raw_json).
 type ActivityPack struct {
-	StartTime   string   `json:"start_time"`  // RFC3339
+	StartTime   string   `json:"start_time"` // RFC3339
 	Name        string   `json:"name"`
 	Type        string   `json:"type"`
 	DistanceKm  float64  `json:"distance_km"` // DistanceM/1000, rounded
