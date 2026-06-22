@@ -23,7 +23,8 @@ func NewRealSyncer(s *store.Store, sc *strava.Client, r garmin.Runner, extraEnv 
 	return &RealSyncer{store: s, strava: sc, runner: r, extraEnv: extraEnv}
 }
 
-// SyncAll runs both syncs with the bound deps.
+// SyncAll runs both syncs with the bound deps. No stream trickle in the daily
+// agent loop (recent-window stream backfill rides the server's periodic sync).
 func (r *RealSyncer) SyncAll(ctx context.Context) syncpkg.AllResult {
-	return syncpkg.SyncAll(ctx, r.store, r.strava, r.runner, r.extraEnv)
+	return syncpkg.SyncAll(ctx, r.store, r.strava, r.runner, r.extraEnv, nil)
 }
