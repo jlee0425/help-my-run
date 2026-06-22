@@ -60,3 +60,16 @@ def test_normalize_garmin_activity_json_serializable():
         "activityType": {"typeKey": "running"},
     })
     json.loads(json.dumps(out))  # must not raise
+
+
+def test_build_output_emits_activities_last():
+    out = normalize.build_output(
+        since="2026-06-14", until="2026-06-15", fetched_at="t",
+        sleep=[], hrv=[], body_battery=[], rhr=[], vo2max=[],
+        activities=[{"garmin_activity_id": 1}],
+    )
+    assert list(out.keys()) == [
+        "since", "until", "fetched_at",
+        "sleep", "hrv", "body_battery", "rhr", "vo2max", "activities",
+    ]
+    assert out["activities"] == [{"garmin_activity_id": 1}]
