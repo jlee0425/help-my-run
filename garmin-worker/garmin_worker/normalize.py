@@ -124,6 +124,23 @@ def normalize_vo2max_day(date: str, raw) -> dict:
     }
 
 
+def normalize_garmin_activity(el: Optional[dict]) -> dict:
+    """Map one get_activities_by_date element -> the §2.x activity contract.
+
+    Reads plain-dict keys (worker never uses garminconnect typed models).
+    raw_json preserves the ORIGINAL element. activity_type is the nested typeKey.
+    """
+    el = el or {}
+    return {
+        "garmin_activity_id": el.get("activityId"),
+        "start_time": el.get("startTimeGMT"),
+        "duration_s": el.get("duration"),
+        "distance_m": el.get("distance"),
+        "activity_type": _get(el, "activityType", "typeKey"),
+        "raw_json": el,
+    }
+
+
 def build_output(
     *,
     since: str,
