@@ -277,3 +277,38 @@ func (s *Store) UpsertGarminActivity(r GarminActivityRow) error {
 		r.GarminActivityID, r.StartTime, r.DurationS, r.DistanceM, r.ActivityType, r.RawJSON)
 	return err
 }
+
+// GarminActivityCandidate is one run-type garmin_activities row within the
+// start-time tolerance window of a query time (for resolveGarminID tie-break).
+type GarminActivityCandidate struct {
+	GarminActivityID int64
+	StartTime        string
+	DurationS        *float64
+	DistanceM        *float64
+}
+
+// FindGarminActivitiesNear returns run-type garmin_activities whose start_time is
+// within ±toleranceSec of startISO, ordered by absolute start-time delta ascending.
+// Empty slice (not error) when none match. Caller tie-breaks by duration then distance.
+func (s *Store) FindGarminActivitiesNear(startISO string, toleranceSec int) ([]GarminActivityCandidate, error) {
+	rows, err := s.DB.Query(`
+		SELECT garmin_activity_id, start_time, duration_s, distance_m
+		FROM garmin_activities
+		WHERE activity_type LIKE '%running%'
+		  AND ABS(strftime('%s', start_time) - strftime('%s', ?)) <= ?
+		ORDER BY ABS(strftime('%s', start_time) - strftime('%s', ?)) ASC`,
+		startISO, toleranceSec, startISO)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []GarminActivityCandidate
+	for rows.Next() {
+		var c GarminActivityCandidate
+		if err := rows.Scan(&c.GarminActivityID, &c.StartTime, &c.DurationS, &c.DistanceM); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
