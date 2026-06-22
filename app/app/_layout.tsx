@@ -22,6 +22,7 @@ export default function RootLayout() {
         <Stack.Screen name="profile" options={{ title: 'Profile' }} />
         <Stack.Screen name="plan-view" options={{ title: 'Weekly plan' }} />
         <Stack.Screen name="progress" options={{ title: 'Progress' }} />
+        <Stack.Screen name="run/[id]" options={{ title: 'Run detail' }} />
       </Stack>
     </QueryClientProvider>
   );
