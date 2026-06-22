@@ -227,6 +227,19 @@ func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv [
 		}
 		synced++
 	}
+	for _, a := range out.Activities {
+		if err := s.UpsertGarminActivity(store.GarminActivityRow{
+			GarminActivityID: a.GarminActivityID,
+			StartTime:        a.StartTime,
+			DurationS:        a.DurationS,
+			DistanceM:        a.DistanceM,
+			ActivityType:     a.ActivityType,
+			RawJSON:          rawString(a.RawJSON),
+		}); err != nil {
+			return errResult(s, source, err)
+		}
+		synced++
+	}
 	return okResult(s, source, synced)
 }
 
