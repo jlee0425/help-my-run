@@ -113,3 +113,34 @@ describe('RunDetailScreen — loading', () => {
     expect(getByTestId('run-loading')).toBeTruthy();
   });
 });
+
+describe('RunDetailScreen — source badge', () => {
+  it('shows "HR via Garmin .FIT" badge when source is garmin', async () => {
+    mockHookState.analysis = {
+      data: { ...analysis, source: 'garmin' },
+      isPending: false, isError: false,
+    };
+    const { getByTestId } = await render(<RunDetailScreen />);
+    const badge = getByTestId('source-badge');
+    expect(badge).toBeTruthy();
+    expect(badge.props.children).toBe('HR via Garmin .FIT');
+  });
+
+  it('does NOT show the source badge when source is strava', async () => {
+    mockHookState.analysis = {
+      data: { ...analysis, source: 'strava' },
+      isPending: false, isError: false,
+    };
+    const { queryByTestId } = await render(<RunDetailScreen />);
+    expect(queryByTestId('source-badge')).toBeNull();
+  });
+
+  it('does NOT show the source badge when there is no HR (no zone section)', async () => {
+    mockHookState.analysis = {
+      data: { ...analysis, source: 'garmin', has_hr: false, time_in_zone: [], decoupling_pct: null },
+      isPending: false, isError: false,
+    };
+    const { queryByTestId } = await render(<RunDetailScreen />);
+    expect(queryByTestId('source-badge')).toBeNull();
+  });
+});

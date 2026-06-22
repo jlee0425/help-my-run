@@ -74,6 +74,9 @@ export default function RunDetailScreen() {
 
       {a && a.has_stream && a.has_hr ? (
         <View style={styles.section}>
+          {a.source === 'garmin' ? (
+            <Text testID="source-badge" style={styles.sourceBadge}>HR via Garmin .FIT</Text>
+          ) : null}
           <Text style={styles.subheading}>Time in zone</Text>
           {a.time_in_zone.map((z) => (
             <ZoneBar key={z.zone} z={z} />
@@ -105,6 +108,10 @@ const styles = StyleSheet.create({
   loading: { fontSize: 14, color: '#666' },
   empty: { fontSize: 14, color: '#999', paddingVertical: 8 },
   section: { gap: 4 },
+  sourceBadge: {
+    alignSelf: 'flex-start', fontSize: 12, fontWeight: '600', color: '#fc4c02',
+    backgroundColor: '#fff0e8', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, marginTop: 8,
+  },
   zoneRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
   zoneLabel: { width: 28, fontSize: 13, color: '#222', fontWeight: '600' },
   zoneTrack: { flex: 1, height: 14, backgroundColor: '#eee', borderRadius: 7, overflow: 'hidden' },
