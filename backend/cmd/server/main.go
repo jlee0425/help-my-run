@@ -16,6 +16,7 @@ import (
 
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/api"
+	"help-my-run/backend/internal/chat"
 	"help-my-run/backend/internal/coach"
 	"help-my-run/backend/internal/config"
 	"help-my-run/backend/internal/garmin"
@@ -44,6 +45,7 @@ type App struct {
 	Pusher   *push.Client     // M2: Expo push transport
 	Progress *progress.Engine // M3.1: deterministic trends + claude -p read
 	Streams  *streams.Engine  // M3.2: per-run stream fetch + time-in-zone/decoupling
+	Chat     *chat.Engine     // M3.3: curated-pack chat-with-your-data engine
 }
 
 // Wire builds the full application graph from config: opens + migrates the
@@ -78,6 +80,7 @@ func Wire(cfg *config.Config) (*App, error) {
 	}
 	coachEngine := coach.New(s, llmClient, cfg.ClaudeModel, cfg.ImageDir)
 	progressEngine := progress.New(s, llmClient, cfg.ClaudeModel)
+	chatEngine := chat.New(s, llmClient, progressEngine, cfg.ClaudeModel, cfg.ChatHistoryTurns)
 
 	pushClient := push.NewClient(cfg.ExpoPushBaseURL)
 	dailyAgent := agent.New(
@@ -100,6 +103,7 @@ func Wire(cfg *config.Config) (*App, error) {
 		Pusher:   pushClient,
 		Progress: progressEngine,
 		Streams:  streamsEngine,
+		Chat:     chatEngine,
 	})
 
 	return &App{
@@ -113,6 +117,7 @@ func Wire(cfg *config.Config) (*App, error) {
 		Pusher:   pushClient,
 		Progress: progressEngine,
 		Streams:  streamsEngine,
+		Chat:     chatEngine,
 	}, nil
 }
 
