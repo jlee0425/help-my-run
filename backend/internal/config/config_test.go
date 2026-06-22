@@ -174,6 +174,39 @@ func TestM2ConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestM3_2StreamConfigDefaults(t *testing.T) {
+	setEnv(t, requiredEnv())
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.StreamRecentWeeks != 12 {
+		t.Errorf("StreamRecentWeeks = %d, want default 12", cfg.StreamRecentWeeks)
+	}
+	if cfg.StreamFetchBudget != 10 {
+		t.Errorf("StreamFetchBudget = %d, want default 10", cfg.StreamFetchBudget)
+	}
+}
+
+func TestM3_2StreamConfigOverrides(t *testing.T) {
+	env := requiredEnv()
+	env["STREAM_RECENT_WEEKS"] = "8"
+	env["STREAM_FETCH_BUDGET"] = "25"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.StreamRecentWeeks != 8 {
+		t.Errorf("StreamRecentWeeks = %d, want 8", cfg.StreamRecentWeeks)
+	}
+	if cfg.StreamFetchBudget != 25 {
+		t.Errorf("StreamFetchBudget = %d, want 25", cfg.StreamFetchBudget)
+	}
+}
+
 func TestM2ConfigOverrides(t *testing.T) {
 	t.Setenv("STRAVA_CLIENT_ID", "id")
 	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
