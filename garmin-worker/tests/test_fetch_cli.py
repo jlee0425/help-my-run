@@ -78,3 +78,23 @@ def test_fetch_live_run_fetch_error_exits_nonzero(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "rate limited" in captured.err
+
+
+def test_dry_run_fetch_includes_activities(capsys):
+    rc = cli.main(["fetch", "--since", "2026-06-14", "--until", "2026-06-15", "--dry-run"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    out = json.loads(captured.out)
+    assert list(out.keys()) == [
+        "since", "until", "fetched_at",
+        "sleep", "hrv", "body_battery", "rhr", "vo2max", "activities",
+    ]
+    assert len(out["activities"]) >= 1
+    a = out["activities"][0]
+    assert set(a.keys()) == {
+        "garmin_activity_id", "start_time", "duration_s",
+        "distance_m", "activity_type", "raw_json",
+    }
+    assert a["garmin_activity_id"] is not None
+    assert "running" in a["activity_type"]
