@@ -150,6 +150,11 @@ describe('HomeScreen', () => {
     expect(getByText('Progress')).toBeTruthy();
   });
 
+  it('renders a navigation link to Chat', async () => {
+    const { getByText } = await render(<HomeScreen />);
+    expect(getByText('Chat')).toBeTruthy();
+  });
+
   it('renders the readiness color pill', async () => {
     const { getByTestId } = await render(<HomeScreen />);
     expect(getByTestId('today-readiness').props.children).toContain('amber');
