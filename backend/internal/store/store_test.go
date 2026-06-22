@@ -32,6 +32,7 @@ func TestOpenAndMigrate(t *testing.T) {
 		"sync_log",
 		"activity_streams", "stream_analyses", "stream_fetch_log",
 		"garmin_activities",
+		"chat_messages",
 	}
 	for _, tbl := range wantTables {
 		var name string
