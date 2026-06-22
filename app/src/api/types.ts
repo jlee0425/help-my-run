@@ -173,3 +173,31 @@ export interface ProgressRead {
   text: string;
   source: 'ai' | 'fallback';
 }
+
+// --- M3.2 streams types (snake_case wire JSON; mirror the Go DTO exactly) ---
+
+export interface ZoneTime {
+  zone: number;     // 1..5
+  seconds: number;  // dwell time in zone
+  pct: number;      // 0..100 share of HR-sampled seconds
+}
+
+export interface ZoneBounds {
+  z1_hi: number;
+  z2_hi: number;
+  z3_hi: number;
+  z4_hi: number;
+}
+
+export interface StreamAnalysis {
+  activity_id: number;
+  has_stream: boolean;            // false -> offer "Fetch stream"
+  has_hr: boolean;                // false -> "No HR in this stream"
+  time_in_zone: ZoneTime[];       // [] when !has_hr
+  decoupling_pct: number | null;  // null when not computable
+  pa_hr_first: number | null;
+  pa_hr_second: number | null;
+  zones: ZoneBounds;
+  source: 'strava' | 'garmin' | '';
+  computed_at: string;            // '' when not fetched
+}
