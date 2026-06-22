@@ -45,7 +45,31 @@ func (e *Engine) Report(ctx context.Context, weeks int) (ProgressReport, error) 
 	if err != nil {
 		return ProgressReport{}, err
 	}
-	return ComputeProgress(acts, rec, vo2, prof, weeks, time.Now().UTC()), nil
+	saRows, err := e.store.ListStreamAnalyses(activityLimit(weeks))
+	if err != nil {
+		return ProgressReport{}, err
+	}
+	streamPts := streamPoints(acts, saRows)
+	return ComputeProgress(acts, rec, vo2, streamPts, prof, weeks, time.Now().UTC()), nil
+}
+
+// streamPoints joins stored stream analyses to their activity start_time (via the
+// in-memory acts list) so decoupling can be bucketed by run date. Rows whose
+// activity is not in acts (outside the window) are dropped.
+func streamPoints(acts []store.Activity, saRows []store.StreamAnalysisRow) []StreamAnalysisPoint {
+	startByID := make(map[int64]string, len(acts))
+	for _, a := range acts {
+		startByID[a.StravaID] = a.StartTime
+	}
+	out := make([]StreamAnalysisPoint, 0, len(saRows))
+	for _, r := range saRows {
+		start, ok := startByID[r.ActivityID]
+		if !ok {
+			continue
+		}
+		out = append(out, StreamAnalysisPoint{StartTime: start, DecouplingPct: r.DecouplingPct})
+	}
+	return out
 }
 
 // activityLimit sizes the ListActivities cap to the requested window so the

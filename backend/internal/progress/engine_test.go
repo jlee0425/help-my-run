@@ -166,6 +166,47 @@ func TestActivityLimitSizesToWindow(t *testing.T) {
 	}
 }
 
+func TestReportIncludesDecouplingSignal(t *testing.T) {
+	s := newProgressStore(t)
+	seedTrendData(t, s) // activities 1 & 2 exist (2026-06-15, 2026-04-06)
+	dp1, dp2 := fp(4.0), fp(7.0)
+	if err := s.UpsertStreamAnalysis(store.StreamAnalysisRow{
+		ActivityID: 1, TimeInZoneJSON: "[]", DecouplingPct: dp1,
+		ZonesJSON: `{"z1_hi":116,"z2_hi":145,"z3_hi":157.5,"z4_hi":170}`,
+		HasHR:     true, ComputedAt: "2026-06-15T07:00:00Z",
+	}); err != nil {
+		t.Fatalf("upsert analysis 1: %v", err)
+	}
+	if err := s.UpsertStreamAnalysis(store.StreamAnalysisRow{
+		ActivityID: 2, TimeInZoneJSON: "[]", DecouplingPct: dp2,
+		ZonesJSON: `{"z1_hi":116,"z2_hi":145,"z3_hi":157.5,"z4_hi":170}`,
+		HasHR:     true, ComputedAt: "2026-04-06T07:00:00Z",
+	}); err != nil {
+		t.Fatalf("upsert analysis 2: %v", err)
+	}
+	e := New(s, &llm.Client{Runner: &captureRunner{}, Model: "m"}, "m")
+
+	rep, err := e.Report(context.Background(), 12)
+	if err != nil {
+		t.Fatalf("Report error = %v", err)
+	}
+	var dec *TrendSummary
+	for i := range rep.Signals {
+		if rep.Signals[i].Key == SignalDecoupling {
+			dec = &rep.Signals[i]
+		}
+	}
+	if dec == nil {
+		t.Fatal("decoupling signal absent from report")
+	}
+	if dec.Unit != "%" || !dec.LowerIsBetter {
+		t.Errorf("decoupling card = %+v, want unit=%% lowerIsBetter=true", dec)
+	}
+	if countNonNil(dec.Series) < 2 {
+		t.Errorf("decoupling series non-nil = %d, want >=2 (two weeks)", countNonNil(dec.Series))
+	}
+}
+
 func hasPair(args []string, k, v string) bool {
 	for i := 0; i+1 < len(args); i++ {
 		if args[i] == k && args[i+1] == v {
