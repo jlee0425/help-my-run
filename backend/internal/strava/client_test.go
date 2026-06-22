@@ -2,12 +2,14 @@ package strava
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAuthorizeURL(t *testing.T) {
@@ -187,5 +189,86 @@ func TestListLaps(t *testing.T) {
 	}
 	if laps[1].AverageHeartrate != nil {
 		t.Errorf("lap1.AverageHeartrate = %v, want nil", laps[1].AverageHeartrate)
+	}
+}
+
+func TestGetActivityStreams(t *testing.T) {
+	var gotPath, gotKeys, gotKeyByType, sawAuth string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotKeys = r.URL.Query().Get("keys")
+		gotKeyByType = r.URL.Query().Get("key_by_type")
+		sawAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(loadFixture(t, "strava_streams.json"))
+	})
+
+	ss, err := c.GetActivityStreams(context.Background(), "access-tok", 14820001234)
+	if err != nil {
+		t.Fatalf("GetActivityStreams error = %v", err)
+	}
+	if gotPath != "/api/v3/activities/14820001234/streams" {
+		t.Errorf("path = %s, want /api/v3/activities/14820001234/streams", gotPath)
+	}
+	if gotKeys != "time,heartrate,velocity_smooth,distance" {
+		t.Errorf("keys = %q, want time,heartrate,velocity_smooth,distance", gotKeys)
+	}
+	if gotKeyByType != "true" {
+		t.Errorf("key_by_type = %q, want true", gotKeyByType)
+	}
+	if sawAuth != "Bearer access-tok" {
+		t.Errorf("Authorization = %q, want Bearer access-tok", sawAuth)
+	}
+	hr, ok := ss["heartrate"]
+	if !ok {
+		t.Fatal("heartrate stream missing")
+	}
+	if len(hr.Data) != 4 || hr.Data[0] != 104 {
+		t.Errorf("heartrate data = %v, want [104 105 106 107]", hr.Data)
+	}
+	if ss["velocity_smooth"].Data[1] != 1.59 {
+		t.Errorf("velocity[1] = %v, want 1.59", ss["velocity_smooth"].Data[1])
+	}
+}
+
+func TestGetActivityStreamsNoHR(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// HR key omitted entirely (no-sensor run).
+		_, _ = w.Write([]byte(`{"time":{"type":"time","data":[0,1],"series_type":"time","original_size":2,"resolution":"high"},"distance":{"type":"distance","data":[0,3],"series_type":"time","original_size":2,"resolution":"high"},"velocity_smooth":{"type":"velocity_smooth","data":[0,3],"series_type":"time","original_size":2,"resolution":"high"}}`))
+	})
+	ss, err := c.GetActivityStreams(context.Background(), "tok", 99)
+	if err != nil {
+		t.Fatalf("GetActivityStreams error = %v", err)
+	}
+	if _, ok := ss["heartrate"]; ok {
+		t.Error("heartrate key present, want absent for no-HR run")
+	}
+}
+
+func TestGetActivityStreams429(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-ReadRateLimit-Limit", "100,1000")
+		w.Header().Set("X-ReadRateLimit-Usage", "100,512")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`{"message":"Rate Limit Exceeded"}`))
+	})
+	_, err := c.GetActivityStreams(context.Background(), "tok", 7)
+	if err == nil {
+		t.Fatal("GetActivityStreams on 429 error = nil, want *ErrRateLimited")
+	}
+	var rl *ErrRateLimited
+	if !errors.As(err, &rl) {
+		t.Fatalf("error = %T, want *ErrRateLimited", err)
+	}
+	if rl.ReadUsage != "100,512" || rl.ReadLimit != "100,1000" {
+		t.Errorf("usage/limit = %q/%q, want 100,512 / 100,1000", rl.ReadUsage, rl.ReadLimit)
+	}
+	// RetryAfter is the next quarter-hour boundary, strictly in the future.
+	if !rl.RetryAfter.After(time.Now()) {
+		t.Errorf("RetryAfter = %v, want a future quarter-hour boundary", rl.RetryAfter)
+	}
+	if m := rl.RetryAfter.Minute() % 15; m != 0 {
+		t.Errorf("RetryAfter minute = %d, want a multiple of 15", rl.RetryAfter.Minute())
 	}
 }

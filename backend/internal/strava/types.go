@@ -48,3 +48,18 @@ type Lap struct {
 	MaxHeartrate     *float64 `json:"max_heartrate"`
 	AverageSpeed     *float64 `json:"average_speed"`
 }
+
+// Stream is one Strava stream channel (a key_by_type=true response value).
+// HR/distance/velocity/time all decode as float64.
+type Stream struct {
+	Type         string    `json:"type"`
+	Data         []float64 `json:"data"`
+	SeriesType   string    `json:"series_type"` // "time" | "distance"
+	OriginalSize int       `json:"original_size"`
+	Resolution   string    `json:"resolution"` // "low" | "medium" | "high"
+}
+
+// StreamSet is the key_by_type=true response: keys are stream types
+// ("time","heartrate","velocity_smooth","distance"). A missing-HR run OMITS the
+// "heartrate" key entirely (not a null/empty array).
+type StreamSet map[string]Stream
