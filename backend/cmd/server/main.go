@@ -63,7 +63,7 @@ func Wire(cfg *config.Config) (*App, error) {
 	runner := garmin.Runner{Python: cfg.PythonBin, Script: cfg.WorkerScript}
 	extraEnv := garminEnv(cfg)
 
-	streamsEngine := streams.New(s, stravaClient, runner, extraEnv)
+	streamsEngine := streams.New(s, stravaClient, runner, extraEnv, cfg.GarminMatchToleranceS)
 
 	syncFunc := func(ctx context.Context) (string, int, *string, string, int, *string) {
 		res := syncpkg.SyncAll(ctx, s, stravaClient, runner, extraEnv, streamTrickle(cfg, streamsEngine))

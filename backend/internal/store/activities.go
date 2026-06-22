@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -61,6 +62,27 @@ func (s *Store) UpsertActivity(a Activity) error {
 		a.AvgHR, a.MaxHR, a.AvgSpeed, a.MaxSpeed, a.AvgCadence, a.ElevationGainM,
 		a.RawJSON, now)
 	return err
+}
+
+// GetActivity returns one activity by strava_id, or ErrNotFound. raw_json is not loaded.
+func (s *Store) GetActivity(stravaID int64) (Activity, error) {
+	var a Activity
+	err := s.DB.QueryRow(`
+		SELECT strava_id, name, type, sport_type, start_time, start_time_local,
+		       distance_m, moving_time_s, elapsed_time_s,
+		       avg_hr, max_hr, avg_speed, max_speed, avg_cadence, elevation_gain_m
+		FROM activities
+		WHERE strava_id = ?`, stravaID).Scan(
+		&a.StravaID, &a.Name, &a.Type, &a.SportType, &a.StartTime, &a.StartTimeLocal,
+		&a.DistanceM, &a.MovingTimeS, &a.ElapsedTimeS,
+		&a.AvgHR, &a.MaxHR, &a.AvgSpeed, &a.MaxSpeed, &a.AvgCadence, &a.ElevationGainM)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Activity{}, ErrNotFound
+	}
+	if err != nil {
+		return Activity{}, err
+	}
+	return a, nil
 }
 
 // ListActivities returns up to limit activities, most-recent-first by start_time.
