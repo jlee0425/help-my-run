@@ -14,7 +14,6 @@ import (
 func setEnv(t *testing.T, kv map[string]string) {
 	t.Helper()
 	all := []string{
-		"STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_REDIRECT_URL",
 		"API_TOKEN", "DB_PATH", "PORT",
 		"GARMIN_EMAIL", "GARMIN_PASSWORD", "GARMIN_TOKENSTORE",
 		"PYTHON_BIN", "WORKER_SCRIPT", "ANTHROPIC_API_KEY",
@@ -35,10 +34,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 
 func requiredEnv() map[string]string {
 	return map[string]string{
-		"STRAVA_CLIENT_ID":     "123456",
-		"STRAVA_CLIENT_SECRET": "secret",
-		"STRAVA_REDIRECT_URL":  "http://localhost:8080/api/strava/callback",
-		"API_TOKEN":            "tok",
+		"API_TOKEN": "tok",
 	}
 }
 
@@ -48,9 +44,6 @@ func TestLoadDefaults(t *testing.T) {
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
-	}
-	if cfg.StravaClientID != "123456" {
-		t.Errorf("StravaClientID = %q, want %q", cfg.StravaClientID, "123456")
 	}
 	if cfg.DBPath != "./helpmyrun.db" {
 		t.Errorf("DBPath = %q, want default %q", cfg.DBPath, "./helpmyrun.db")
@@ -150,9 +143,6 @@ func TestLoadM1Explicit(t *testing.T) {
 }
 
 func TestM2ConfigDefaults(t *testing.T) {
-	t.Setenv("STRAVA_CLIENT_ID", "id")
-	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
-	t.Setenv("STRAVA_REDIRECT_URL", "http://localhost/cb")
 	t.Setenv("API_TOKEN", "tok")
 
 	var c Config
@@ -210,9 +200,6 @@ func TestM3_2StreamConfigOverrides(t *testing.T) {
 }
 
 func TestM2ConfigOverrides(t *testing.T) {
-	t.Setenv("STRAVA_CLIENT_ID", "id")
-	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
-	t.Setenv("STRAVA_REDIRECT_URL", "http://localhost/cb")
 	t.Setenv("API_TOKEN", "tok")
 	t.Setenv("AGENT_ENABLED", "false")
 	t.Setenv("AGENT_RUN_TIME", "06:00")
@@ -226,38 +213,6 @@ func TestM2ConfigOverrides(t *testing.T) {
 	if c.AgentEnabledDefault != false || c.AgentRunTime != "06:00" ||
 		c.AgentTimezone != "Asia/Seoul" || c.ExpoPushBaseURL != "http://localhost:9999" {
 		t.Errorf("overrides not applied: %+v", c)
-	}
-}
-
-func TestLoadGarminMatchToleranceDefault(t *testing.T) {
-	t.Setenv("STRAVA_CLIENT_ID", "id")
-	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
-	t.Setenv("STRAVA_REDIRECT_URL", "http://cb")
-	t.Setenv("API_TOKEN", "tok")
-	os.Unsetenv("GARMIN_MATCH_TOLERANCE_S")
-
-	c, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if c.GarminMatchToleranceS != 120 {
-		t.Errorf("GarminMatchToleranceS = %d, want 120 (default)", c.GarminMatchToleranceS)
-	}
-}
-
-func TestLoadGarminMatchToleranceOverride(t *testing.T) {
-	t.Setenv("STRAVA_CLIENT_ID", "id")
-	t.Setenv("STRAVA_CLIENT_SECRET", "secret")
-	t.Setenv("STRAVA_REDIRECT_URL", "http://cb")
-	t.Setenv("API_TOKEN", "tok")
-	t.Setenv("GARMIN_MATCH_TOLERANCE_S", "45")
-
-	c, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
-	}
-	if c.GarminMatchToleranceS != 45 {
-		t.Errorf("GarminMatchToleranceS = %d, want 45 (override)", c.GarminMatchToleranceS)
 	}
 }
 
