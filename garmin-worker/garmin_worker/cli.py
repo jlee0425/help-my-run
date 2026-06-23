@@ -95,8 +95,8 @@ _DRY_VO2MAX_RAW = {
     "2026-06-15": {"userId": 1, "generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0, "fitnessAge": 30}, "cycling": None},
 }
 _DRY_ACTIVITIES_RAW = [
-    {"activityId": 14820001234, "startTimeGMT": "2026-06-14 05:00:00", "duration": 3300.0, "distance": 10000.0, "activityType": {"typeKey": "running"}},
-    {"activityId": 14820005678, "startTimeGMT": "2026-06-15 06:00:00", "duration": 2700.0, "distance": 8000.0, "activityType": {"typeKey": "trail_running"}},
+    {"activityId": 14820001234, "activityName": "Morning Run", "startTimeGMT": "2026-06-14 05:00:00", "startTimeLocal": "2026-06-14 07:00:00", "duration": 3300.0, "elapsedDuration": 3300.0, "movingDuration": 3200.0, "distance": 10000.0, "activityType": {"typeKey": "running"}, "averageHR": 148.0, "maxHR": 168.0, "averageSpeed": 3.05, "maxSpeed": 4.2, "averageRunningCadenceInStepsPerMinute": 172.0, "elevationGain": 85.0},
+    {"activityId": 14820005678, "activityName": "Trail Run", "startTimeGMT": "2026-06-15 06:00:00", "startTimeLocal": "2026-06-15 08:00:00", "duration": 2700.0, "elapsedDuration": 2700.0, "movingDuration": 2650.0, "distance": 8000.0, "activityType": {"typeKey": "trail_running"}, "averageHR": 152.0, "maxHR": 175.0, "averageSpeed": 2.96, "maxSpeed": 3.9, "averageRunningCadenceInStepsPerMinute": 168.0, "elevationGain": 210.0},
 ]
 
 

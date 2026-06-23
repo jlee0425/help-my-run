@@ -124,19 +124,46 @@ def normalize_vo2max_day(date: str, raw) -> dict:
     }
 
 
-def normalize_garmin_activity(el: Optional[dict]) -> dict:
-    """Map one get_activities_by_date element -> the §2.x activity contract.
+def _gmt_to_rfc3339(s: Optional[str]) -> Optional[str]:
+    """Garmin startTimeGMT "YYYY-MM-DD HH:MM:SS" -> RFC3339 "YYYY-MM-DDTHH:MM:SSZ".
 
-    Reads plain-dict keys (worker never uses garminconnect typed models).
-    raw_json preserves the ORIGINAL element. activity_type is the nested typeKey.
+    Returns None for a falsy input. Only the single space between the date and
+    time is replaced; a value that is already RFC3339 (has 'T') is returned as-is
+    apart from ensuring a trailing 'Z'."""
+    if not s:
+        return None
+    out = s.replace(" ", "T", 1)
+    if not out.endswith("Z"):
+        out = out + "Z"
+    return out
+
+
+def normalize_garmin_activity(el: Optional[dict]) -> dict:
+    """Map one get_activities_by_date element -> the full activity contract.
+
+    Reads plain-dict keys (worker never uses garminconnect typed models). Every
+    field is Optional on the Garmin list element, so all enriched values may be
+    None. start_time is normalized to RFC3339 (so the Go engines' time.Parse with
+    RFC3339 succeeds); start_time_local keeps Garmin's local wall-clock string.
+    elapsed_time_s falls back to "duration" when "elapsedDuration" is absent.
+    raw_json preserves the ORIGINAL element.
     """
     el = el or {}
     return {
         "garmin_activity_id": el.get("activityId"),
-        "start_time": el.get("startTimeGMT"),
-        "duration_s": el.get("duration"),
-        "distance_m": el.get("distance"),
+        "name": el.get("activityName"),
+        "start_time": _gmt_to_rfc3339(el.get("startTimeGMT")),
+        "start_time_local": el.get("startTimeLocal"),
         "activity_type": _get(el, "activityType", "typeKey"),
+        "distance_m": el.get("distance"),
+        "moving_time_s": el.get("movingDuration"),
+        "elapsed_time_s": el.get("elapsedDuration") if el.get("elapsedDuration") is not None else el.get("duration"),
+        "avg_hr": el.get("averageHR"),
+        "max_hr": el.get("maxHR"),
+        "avg_speed": el.get("averageSpeed"),
+        "max_speed": el.get("maxSpeed"),
+        "avg_cadence": el.get("averageRunningCadenceInStepsPerMinute"),
+        "elevation_gain_m": el.get("elevationGain"),
         "raw_json": el,
     }
 

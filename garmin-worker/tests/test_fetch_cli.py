@@ -93,8 +93,10 @@ def test_dry_run_fetch_includes_activities(capsys):
     assert len(out["activities"]) >= 1
     a = out["activities"][0]
     assert set(a.keys()) == {
-        "garmin_activity_id", "start_time", "duration_s",
-        "distance_m", "activity_type", "raw_json",
+        "garmin_activity_id", "name", "start_time", "start_time_local",
+        "activity_type", "distance_m", "moving_time_s", "elapsed_time_s",
+        "avg_hr", "max_hr", "avg_speed", "max_speed", "avg_cadence",
+        "elevation_gain_m", "raw_json",
     }
     assert a["garmin_activity_id"] is not None
     assert "running" in a["activity_type"]

@@ -22,7 +22,39 @@
     {"date": "2026-06-15", "vo2max": 52.0, "raw_json": {"userId": 1, "generic": {"calendarDate": "2026-06-15", "vo2MaxValue": 52.0, "fitnessAge": 30}, "cycling": null}}
   ],
   "activities": [
-    {"garmin_activity_id": 14820001234, "start_time": "2026-06-14 05:00:00", "duration_s": 3300.0, "distance_m": 10000.0, "activity_type": "running", "raw_json": {"activityId": 14820001234, "startTimeGMT": "2026-06-14 05:00:00", "duration": 3300.0, "distance": 10000.0, "activityType": {"typeKey": "running"}}},
-    {"garmin_activity_id": 14820005678, "start_time": "2026-06-15 06:00:00", "duration_s": 2700.0, "distance_m": 8000.0, "activity_type": "trail_running", "raw_json": {"activityId": 14820005678, "startTimeGMT": "2026-06-15 06:00:00", "duration": 2700.0, "distance": 8000.0, "activityType": {"typeKey": "trail_running"}}}
+    {
+      "garmin_activity_id": 14820001234,
+      "name": "Morning Run",
+      "start_time": "2026-06-14T05:00:00Z",
+      "start_time_local": "2026-06-14 07:00:00",
+      "activity_type": "running",
+      "distance_m": 10000.0,
+      "moving_time_s": 3200.0,
+      "elapsed_time_s": 3300.0,
+      "avg_hr": 148.0,
+      "max_hr": 168.0,
+      "avg_speed": 3.05,
+      "max_speed": 4.2,
+      "avg_cadence": 172.0,
+      "elevation_gain_m": 85.0,
+      "raw_json": {"activityId": 14820001234, "activityName": "Morning Run", "startTimeGMT": "2026-06-14 05:00:00", "startTimeLocal": "2026-06-14 07:00:00", "duration": 3300.0, "elapsedDuration": 3300.0, "movingDuration": 3200.0, "distance": 10000.0, "activityType": {"typeKey": "running"}, "averageHR": 148.0, "maxHR": 168.0, "averageSpeed": 3.05, "maxSpeed": 4.2, "averageRunningCadenceInStepsPerMinute": 172.0, "elevationGain": 85.0}
+    },
+    {
+      "garmin_activity_id": 14820005678,
+      "name": "Trail Run",
+      "start_time": "2026-06-15T06:00:00Z",
+      "start_time_local": "2026-06-15 08:00:00",
+      "activity_type": "trail_running",
+      "distance_m": 8000.0,
+      "moving_time_s": 2650.0,
+      "elapsed_time_s": 2700.0,
+      "avg_hr": 152.0,
+      "max_hr": 175.0,
+      "avg_speed": 2.96,
+      "max_speed": 3.9,
+      "avg_cadence": 168.0,
+      "elevation_gain_m": 210.0,
+      "raw_json": {"activityId": 14820005678, "activityName": "Trail Run", "startTimeGMT": "2026-06-15 06:00:00", "startTimeLocal": "2026-06-15 08:00:00", "duration": 2700.0, "elapsedDuration": 2700.0, "movingDuration": 2650.0, "distance": 8000.0, "activityType": {"typeKey": "trail_running"}, "averageHR": 152.0, "maxHR": 175.0, "averageSpeed": 2.96, "maxSpeed": 3.9, "averageRunningCadenceInStepsPerMinute": 168.0, "elevationGain": 210.0}
+    }
   ]
 }

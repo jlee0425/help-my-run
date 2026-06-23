@@ -200,8 +200,9 @@ def test_run_fetch_normalizes_activities():
     assert len(out["activities"]) == 1
     a = out["activities"][0]
     assert a["garmin_activity_id"] == 14820001234
-    assert a["start_time"] == "2026-06-22 05:00:00"
-    assert a["duration_s"] == 3300.0
+    assert a["start_time"] == "2026-06-22T05:00:00Z"
+    assert a["moving_time_s"] is None        # mock has no movingDuration
+    assert a["elapsed_time_s"] == 3300.0     # falls back to "duration"
     assert a["distance_m"] == 10000.0
     assert a["activity_type"] == "running"
     assert "raw_json" in a
@@ -242,3 +243,26 @@ def test_run_fetch_activities_failure_degrades_to_empty():
     assert out["activities"] == []
     # Other sources still populated (degrade is isolated to activities).
     assert len(out["sleep"]) == 2
+
+
+def test_run_fit_fetch_uses_download_and_echoes_id(monkeypatch):
+    class _FitClient:
+        def __init__(self):
+            self.dl_args = None
+        def download_activity_original(self, activity_id):
+            self.dl_args = activity_id
+            return b"ZIP-BYTES"  # opaque; normalize is monkeypatched below
+
+    seen = {}
+    def _fake_normalize(raw):
+        seen["raw"] = raw
+        return {"t": [0.0, 1.0], "hr": [120, 130], "v": [2.0, 2.0], "dist": [0.0, 2.0]}
+    monkeypatch.setattr(fetcher.normalize, "normalize_fit_stream", _fake_normalize)
+
+    c = _FitClient()
+    out = fetcher.run_fit_fetch(c, activity_id="14820001234", echo_id=14820001234, fetched_at="t")
+    assert c.dl_args == "14820001234"          # real download hit with the garmin id
+    assert seen["raw"] == b"ZIP-BYTES"          # zip bytes piped to the parser
+    assert out["activity_id"] == 14820001234    # echo id is the store PK
+    assert out["source"] == "garmin"
+    assert out["series"]["hr"] == [120, 130]
