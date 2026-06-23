@@ -8,18 +8,15 @@ export interface SourceStatus {
   error: string | null;
 }
 export interface Status {
-  strava: SourceStatus & { athlete_id: number }; // M0 always emits a non-null athlete_id: a strava_tokens row exists only after a successful OAuth that includes an athlete.
   garmin: SourceStatus;
   counts: { activities: number; recovery_days: number };
 }
 
-export interface ConnectResponse { authorizeUrl: string; }
-
 export interface SyncSourceResult { status: 'ok' | 'error'; synced: number; error: string | null; }
-export interface SyncResponse { strava: SyncSourceResult; garmin: SyncSourceResult; }
+export interface SyncResponse { garmin: SyncSourceResult; }
 
 export interface Activity {
-  strava_id: number;
+  activity_id: number;
   name: string;
   type: string;
   sport_type: string | null;
@@ -198,7 +195,7 @@ export interface StreamAnalysis {
   pa_hr_first: number | null;
   pa_hr_second: number | null;
   zones: ZoneBounds;
-  source: 'strava' | 'garmin' | '';
+  source: 'garmin' | '';
   computed_at: string;            // '' when not fetched
 }
 

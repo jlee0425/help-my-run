@@ -72,7 +72,6 @@ afterEach(() => {
 describe('useStatus', () => {
   it('fetches /api/status', async () => {
     const data: Status = {
-      strava: { connected: true, athlete_id: 1, last_synced_at: null, last_run_at: null, status: 'ok', error: null },
       garmin: { connected: false, last_synced_at: null, last_run_at: null, status: 'never', error: null },
       counts: { activities: 5, recovery_days: 3 },
     };
@@ -133,7 +132,6 @@ describe('useRecovery', () => {
 describe('useSync', () => {
   it('POSTs /api/sync and returns per-source results', async () => {
     const data: SyncResponse = {
-      strava: { status: 'ok', synced: 3, error: null },
       garmin: { status: 'ok', synced: 5, error: null },
     };
     mockApiPost.mockResolvedValue(data);

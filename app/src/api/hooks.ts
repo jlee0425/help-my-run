@@ -3,14 +3,12 @@ import {
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
-import * as WebBrowser from 'expo-web-browser';
 import { apiGet, apiPost, apiPut, apiDelete, apiUpload } from './client';
 import type {
   Status,
   ActivitiesResponse,
   RecoveryResponse,
   SyncResponse,
-  ConnectResponse,
   AthleteProfile,
   Fitness,
   CrossFitWeek,
@@ -55,25 +53,6 @@ export function useSync() {
       queryClient.invalidateQueries({ queryKey: ['status'] });
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['recovery'] });
-    },
-  });
-}
-
-export function useConnectStrava() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const { authorizeUrl } = await apiGet<ConnectResponse>('/api/strava/connect');
-      await WebBrowser.openAuthSessionAsync(authorizeUrl);
-      for (let i = 0; i < 30; i++) {
-        const s = await apiGet<Status>('/api/status');
-        if (s.strava?.connected) return s;
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-      return apiGet<Status>('/api/status');
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['status'] });
     },
   });
 }

@@ -71,7 +71,6 @@ export default function HomeScreen() {
   const activities = useActivities();
   const recovery = useRecovery();
 
-  const strava = status.data?.strava;
   const garmin = status.data?.garmin;
 
   return (
@@ -80,10 +79,6 @@ export default function HomeScreen() {
       <TodayCard />
 
       <Text style={styles.heading}>Connection</Text>
-      <Text testID="home-strava-status" style={styles.statusLine}>
-        Strava: {strava?.connected ? 'Connected' : 'Not connected'} · last sync{' '}
-        {fmtSyncTime(strava?.last_synced_at ?? null)}
-      </Text>
       <Text testID="home-garmin-status" style={styles.statusLine}>
         Garmin: {garmin?.connected ? 'Connected' : 'Not connected'} · last sync{' '}
         {fmtSyncTime(garmin?.last_synced_at ?? null)}
@@ -117,11 +112,11 @@ export default function HomeScreen() {
       <FlatList
         scrollEnabled={false}
         data={activities.data?.activities ?? []}
-        keyExtractor={(item: Activity) => String(item.strava_id)}
+        keyExtractor={(item: Activity) => String(item.activity_id)}
         ListEmptyComponent={<Text style={styles.empty}>No runs yet</Text>}
         renderItem={({ item }: { item: Activity }) => (
-          <Link href={{ pathname: '/run/[id]', params: { id: String(item.strava_id) } }} asChild>
-            <Pressable testID={`run-row-${item.strava_id}`} style={styles.row}>
+          <Link href={{ pathname: '/run/[id]', params: { id: String(item.activity_id) } }} asChild>
+            <Pressable testID={`run-row-${item.activity_id}`} style={styles.row}>
               <Text style={styles.rowTitle}>{item.name}</Text>
               <Text style={styles.rowSub}>
                 {fmtKm(item.distance_m)} · {Math.round(item.moving_time_s / 60)} min

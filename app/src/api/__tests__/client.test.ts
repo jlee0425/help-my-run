@@ -80,16 +80,16 @@ describe('apiPost', () => {
     mockFetchOnce({
       ok: true,
       status: 200,
-      json: { strava: { status: 'ok', synced: 1, error: null } },
+      json: { garmin: { status: 'ok', synced: 1, error: null } },
     });
 
-    const data = await apiPost<{ strava: { status: string } }>('/api/sync', { foo: 1 });
+    const data = await apiPost<{ garmin: { status: string } }>('/api/sync', { foo: 1 });
 
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
     expect(url).toBe('http://localhost:8080/api/sync');
     expect(init.method).toBe('POST');
     expect(init.body).toBe(JSON.stringify({ foo: 1 }));
-    expect(data).toEqual({ strava: { status: 'ok', synced: 1, error: null } });
+    expect(data).toEqual({ garmin: { status: 'ok', synced: 1, error: null } });
   });
 
   it('sends no body when none is provided', async () => {

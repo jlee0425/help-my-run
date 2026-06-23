@@ -19,7 +19,6 @@ const profileData: AthleteProfile = {
 const mockProfileUpdateMutate = jest.fn();
 
 const mockSave = jest.fn();
-const mockConnectMutate = jest.fn();
 const mockSyncMutate = jest.fn();
 
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null } }));
@@ -36,7 +35,6 @@ jest.mock('../../src/api/settings', () => ({
 jest.mock('../../src/api/hooks', () => ({
   useStatus: () => ({
     data: {
-      strava: { connected: true, athlete_id: 1, last_synced_at: null, last_run_at: null, status: 'ok', error: null },
       garmin: { connected: false, last_synced_at: null, last_run_at: null, status: 'never', error: null },
       counts: { activities: 0, recovery_days: 0 },
     },
@@ -44,7 +42,6 @@ jest.mock('../../src/api/hooks', () => ({
     isError: false,
   }),
   useSync: () => ({ mutate: mockSyncMutate, isPending: false }),
-  useConnectStrava: () => ({ mutate: mockConnectMutate, isPending: false }),
   useProfile: () => ({ data: profileData, isPending: false, isError: false }),
   useUpdateProfile: () => ({ mutate: mockProfileUpdateMutate, isPending: false }),
 }));
@@ -80,19 +77,6 @@ describe('SettingsScreen', () => {
       fireEvent.press(getByTestId('btn-save'));
     });
     expect(mockSave).toHaveBeenCalledWith('http://10.0.0.5:8080', 'new-token');
-  });
-
-  it('starts Strava connect when Connect is pressed', async () => {
-    const { getByTestId } = await render(<SettingsScreen />);
-    await act(async () => {
-      fireEvent.press(getByTestId('btn-strava-connect'));
-    });
-    expect(mockConnectMutate).toHaveBeenCalledTimes(1);
-  });
-
-  it('shows the Strava connected state', async () => {
-    const { getByTestId } = await render(<SettingsScreen />);
-    expect(getByTestId('strava-status').props.children).toContain('Connected');
   });
 
   it('shows the Garmin not-connected state', async () => {

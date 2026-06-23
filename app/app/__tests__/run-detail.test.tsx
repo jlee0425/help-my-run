@@ -11,7 +11,7 @@ const analysis: StreamAnalysis = {
   ],
   decoupling_pct: 4.2, pa_hr_first: 0.021, pa_hr_second: 0.020,
   zones: { z1_hi: 116, z2_hi: 145, z3_hi: 157.5, z4_hi: 170 },
-  source: 'strava', computed_at: '2026-06-22T07:00:00Z',
+  source: 'garmin', computed_at: '2026-06-22T07:00:00Z',
 };
 
 const mockFetch = jest.fn();
@@ -126,9 +126,9 @@ describe('RunDetailScreen — source badge', () => {
     expect(badge.props.children).toBe('HR via Garmin .FIT');
   });
 
-  it('does NOT show the source badge when source is strava', async () => {
+  it('does NOT show the source badge when source is empty', async () => {
     mockHookState.analysis = {
-      data: { ...analysis, source: 'strava' },
+      data: { ...analysis, source: '' },
       isPending: false, isError: false,
     };
     const { queryByTestId } = await render(<RunDetailScreen />);

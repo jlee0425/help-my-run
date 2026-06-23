@@ -2,7 +2,6 @@ import type {
   Health,
   SourceStatus,
   Status,
-  ConnectResponse,
   SyncSourceResult,
   SyncResponse,
   Activity,
@@ -31,14 +30,6 @@ import type {
 describe('api types', () => {
   it('Status matches the /api/status contract', () => {
     const status: Status = {
-      strava: {
-        connected: true,
-        athlete_id: 12345678,
-        last_synced_at: '2026-06-19T05:00:30Z',
-        last_run_at: '2026-06-19T05:00:30Z',
-        status: 'ok',
-        error: null,
-      },
       garmin: {
         connected: true,
         last_synced_at: '2026-06-19T05:00:42Z',
@@ -48,8 +39,8 @@ describe('api types', () => {
       },
       counts: { activities: 42, recovery_days: 30 },
     };
-    expect(status.strava.athlete_id).toBe(12345678);
-    expect(status.strava.status).toBe('ok');
+    expect(status.garmin.connected).toBe(true);
+    expect(status.garmin.status).toBe('ok');
     expect(status.counts.recovery_days).toBe(30);
   });
 
@@ -72,24 +63,18 @@ describe('api types', () => {
     expect(e.error).toContain('re-run worker.py login');
   });
 
-  it('ConnectResponse uses camelCase authorizeUrl', () => {
-    const c: ConnectResponse = { authorizeUrl: 'https://www.strava.com/oauth/authorize?x=1' };
-    expect(c.authorizeUrl).toContain('strava.com/oauth/authorize');
-  });
-
-  it('SyncResponse has per-source results', () => {
-    const ok: SyncSourceResult = { status: 'ok', synced: 3, error: null };
+  it('SyncResponse has the Garmin result', () => {
+    const err: SyncSourceResult = { status: 'error', synced: 0, error: 'worker exit 1: re-run worker.py login' };
     const sync: SyncResponse = {
-      strava: ok,
-      garmin: { status: 'error', synced: 0, error: 'worker exit 1: re-run worker.py login' },
+      garmin: err,
     };
-    expect(sync.strava.synced).toBe(3);
+    expect(sync.garmin.synced).toBe(0);
     expect(sync.garmin.status).toBe('error');
   });
 
   it('Activity allows null optional fields', () => {
     const a: Activity = {
-      strava_id: 14820001234,
+      activity_id: 14820001234,
       name: 'Morning Run',
       type: 'Run',
       sport_type: null,
@@ -106,7 +91,7 @@ describe('api types', () => {
       elevation_gain_m: null,
     };
     const resp: ActivitiesResponse = { activities: [a] };
-    expect(resp.activities[0].strava_id).toBe(14820001234);
+    expect(resp.activities[0].activity_id).toBe(14820001234);
   });
 
   it('RecoveryDay allows null sub-objects', () => {
