@@ -13,14 +13,11 @@ import (
 
 func TestWireServesHealthAndAuth(t *testing.T) {
 	cfg := &config.Config{
-		StravaClientID:     "12345",
-		StravaClientSecret: "secret",
-		StravaRedirectURL:  "http://localhost:8080/api/strava/callback",
-		APIToken:           "tok",
-		DBPath:             filepath.Join(t.TempDir(), "wire.db"),
-		Port:               "8080",
-		PythonBin:          "/bin/cat",
-		WorkerScript:       "/dev/null",
+		APIToken:     "tok",
+		DBPath:       filepath.Join(t.TempDir(), "wire.db"),
+		Port:         "8080",
+		PythonBin:    "/bin/cat",
+		WorkerScript: "/dev/null",
 	}
 
 	app, err := Wire(cfg)
@@ -55,17 +52,14 @@ func TestWireServesHealthAndAuth(t *testing.T) {
 
 func TestWireInjectsCoach(t *testing.T) {
 	cfg := &config.Config{
-		StravaClientID:     "12345",
-		StravaClientSecret: "secret",
-		StravaRedirectURL:  "http://localhost:8080/api/strava/callback",
-		APIToken:           "tok",
-		DBPath:             filepath.Join(t.TempDir(), "coach-wire.db"),
-		Port:               "8080",
-		PythonBin:          "/bin/cat",
-		WorkerScript:       "/dev/null",
-		ClaudeBin:          "claude",
-		ClaudeModel:        "claude-opus-4-8",
-		ImageDir:           filepath.Join(t.TempDir(), "cfimg"),
+		APIToken:     "tok",
+		DBPath:       filepath.Join(t.TempDir(), "coach-wire.db"),
+		Port:         "8080",
+		PythonBin:    "/bin/cat",
+		WorkerScript: "/dev/null",
+		ClaudeBin:    "claude",
+		ClaudeModel:  "claude-opus-4-8",
+		ImageDir:     filepath.Join(t.TempDir(), "cfimg"),
 	}
 	app, err := Wire(cfg)
 	if err != nil {
@@ -87,9 +81,6 @@ func TestWireInjectsCoach(t *testing.T) {
 func testCfg(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
-		StravaClientID:      "id",
-		StravaClientSecret:  "secret",
-		StravaRedirectURL:   "http://localhost:8080/api/strava/callback",
 		APIToken:            "tok",
 		DBPath:              filepath.Join(t.TempDir(), "wire.db"),
 		Port:                "8080",
