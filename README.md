@@ -1,6 +1,6 @@
 # help-my-run
 
-A self-hostable, single-user AI running coach. It pulls your runs from **Strava** and your recovery data (sleep, HRV, Body Battery, resting HR) from **Garmin Connect** into a local database, then (in a later milestone) uses Claude to coach you. M0 delivers the data foundation: connect Strava, log in to Garmin once, sync, and view your runs + recovery in a small Expo app.
+A self-hostable, single-user AI running coach. It pulls your runs **and** your recovery data (sleep, HRV, Body Battery, resting HR) from **Garmin Connect** into a local database, then uses Claude to coach you. It delivers the data foundation: log in to Garmin once, sync, and view your runs + recovery in a small Expo app.
 
 ## Architecture
 
@@ -10,7 +10,6 @@ A self-hostable, single-user AI running coach. It pulls your runs from **Strava*
 
 ## Prerequisites
 
-- **A Strava API application.** Create one at <https://www.strava.com/settings/api>. Copy the **Client ID** and **Client Secret** into `.env` (`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`). Set the application's **Authorization Callback Domain** to match `STRAVA_REDIRECT_URL` (e.g. `localhost`); the redirect URL must point at `/api/strava/callback`.
 - **A Garmin Connect account** (email + password) for the one-time `worker.py login`.
 - **No Anthropic API key needed.** The AI features (M1 plans, M2 daily loop, M3.3 chat) run through the `claude` CLI under your **Claude subscription** at $0 per token. ⚠️ **Leave `ANTHROPIC_API_KEY` UNSET** — `claude` prefers an env API key over your subscription, so any value there (even a placeholder) makes `claude -p` fail with a 401. Only set it if you deliberately want metered API billing.
 - Go 1.22+, Python 3.11+, and Node.js 18+ installed.
@@ -25,8 +24,8 @@ cd help-my-run
 
 # 1. Configure secrets
 cp .env.example .env
-# edit .env and fill in STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, STRAVA_REDIRECT_URL,
-# API_TOKEN, GARMIN_EMAIL, GARMIN_PASSWORD (and any optional overrides)
+# edit .env and fill in API_TOKEN, GARMIN_EMAIL, GARMIN_PASSWORD, and the absolute
+# PYTHON_BIN / WORKER_SCRIPT / DB_PATH / IMAGE_DIR paths (and any optional overrides)
 
 # 2. Backend deps
 cd backend && go mod download && cd ..
@@ -81,7 +80,7 @@ make run-backend   # starts the Go API + periodic sync ticker on $PORT (default 
 make run-app       # starts the Expo dev server (open in Expo Go or a dev build)
 ```
 
-In the app's Settings screen, enter the backend URL (e.g. `http://<your-LAN-ip>:8080`) and your `API_TOKEN`, then connect Strava.
+In the app's Settings screen, enter the backend URL (e.g. `http://<your-LAN-ip>:8080`) and your `API_TOKEN`, then tap **Sync now**. (Garmin connection is the one-time `make garmin-login` above; Settings shows the Garmin connection status.)
 
 ## Syncing
 
@@ -97,7 +96,7 @@ make test          # runs the Go, Python worker, and Expo app test suites
 
 ## Security note
 
-All secrets live in `.env`, which is **gitignored**. Never commit credentials (Strava secret, API token, Garmin password) or your Garmin token directory. Review `.gitignore` before pushing.
+All secrets live in `.env`, which is **gitignored**. Never commit credentials (API token, Garmin password) or your Garmin token directory. Review `.gitignore` before pushing.
 
 ## Disclaimer
 
