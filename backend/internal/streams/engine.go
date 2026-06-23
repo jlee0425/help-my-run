@@ -8,24 +8,21 @@ import (
 
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 )
 
 // Engine is the DB-loading wrapper around the pure compute functions. It owns the
 // analysis cache + recompute-on-zone-change logic and the on-demand/trickle
 // fetch path. *Engine satisfies api.Streams and sync.streamFetcher.
 type Engine struct {
-	store           *store.Store
-	strava          *strava.Client
-	runner          garmin.Runner
-	extraEnv        []string
-	matchToleranceS int // M3.2.1: GARMIN_MATCH_TOLERANCE_S — start-time match window (s).
+	store    *store.Store
+	runner   garmin.Runner
+	extraEnv []string
 }
 
-// New constructs a streams Engine. The strava client + garmin runner power
-// FetchAndAnalyze; GetOrComputeAnalysis uses only the store.
-func New(s *store.Store, sc *strava.Client, runner garmin.Runner, extraEnv []string, matchToleranceS int) *Engine {
-	return &Engine{store: s, strava: sc, runner: runner, extraEnv: extraEnv, matchToleranceS: matchToleranceS}
+// New constructs a streams Engine. The garmin runner powers FetchAndAnalyze;
+// GetOrComputeAnalysis uses only the store.
+func New(s *store.Store, runner garmin.Runner, extraEnv []string) *Engine {
+	return &Engine{store: s, runner: runner, extraEnv: extraEnv}
 }
 
 // rowToAnalysis decodes a stored StreamAnalysisRow into a StreamAnalysis.
@@ -134,10 +131,9 @@ func (e *Engine) GetOrComputeAnalysis(ctx context.Context, activityID int64) (St
 	return rowToAnalysis(cached, raw.Source)
 }
 
-// FetchAndAnalyze fetches the per-run stream if missing (Strava primary; Garmin
-// FIT fallback when Strava lacks HR), stores it gzipped, computes + caches the
-// analysis, and returns it. If a raw stream already exists it just (re)computes
-// via GetOrComputeAnalysis. Propagates *strava.ErrRateLimited unchanged.
+// FetchAndAnalyze fetches the per-run Garmin .FIT stream if missing, stores it
+// gzipped, computes + caches the analysis, and returns it. If a raw stream
+// already exists it just (re)computes via GetOrComputeAnalysis.
 func (e *Engine) FetchAndAnalyze(ctx context.Context, activityID int64) (StreamAnalysis, error) {
 	if has, err := e.store.HasActivityStream(activityID); err != nil {
 		return StreamAnalysis{}, err
@@ -145,27 +141,13 @@ func (e *Engine) FetchAndAnalyze(ctx context.Context, activityID int64) (StreamA
 		return e.GetOrComputeAnalysis(ctx, activityID)
 	}
 
-	token, err := e.accessToken(ctx)
+	gid, _ := e.resolveGarminID(activityID) // identity: gid == activityID
+	out, err := e.runner.RunGarminFetchFIT(ctx, gid, activityID, e.extraEnv)
 	if err != nil {
 		return StreamAnalysis{}, err
 	}
-	ss, err := e.strava.GetActivityStreams(ctx, token, activityID)
-	if err != nil {
-		return StreamAnalysis{}, err // includes *strava.ErrRateLimited
-	}
-	ser := FromStravaStreams(ss)
-	source := "strava"
-
-	// Garmin FIT fallback only when Strava carried no HR and a Garmin id resolves.
-	if !ser.HasHR() {
-		if gid, ok := e.resolveGarminID(activityID); ok {
-			if out, ferr := e.runner.RunGarminFetchFIT(ctx, gid, activityID, e.extraEnv); ferr == nil && len(out.Series.HR) > 0 {
-				ser = Series{T: out.Series.T, HR: out.Series.HR, V: out.Series.V, Dist: out.Series.Dist}
-				source = "garmin"
-			}
-			// On FIT failure: degrade to the Strava (no-HR) series already in ser.
-		}
-	}
+	ser := Series{T: out.Series.T, HR: out.Series.HR, V: out.Series.V, Dist: out.Series.Dist}
+	source := "garmin"
 
 	gz, err := CompressSeries(ser)
 	if err != nil {
@@ -179,83 +161,9 @@ func (e *Engine) FetchAndAnalyze(ctx context.Context, activityID int64) (StreamA
 	return e.GetOrComputeAnalysis(ctx, activityID)
 }
 
-// refreshBuffer mirrors sync.refreshBuffer: refresh if the token expires within
-// this window (M0 token-refresh mechanism, replicated for the fetch path).
-const refreshBuffer = 60 * time.Second
-
-// accessToken returns a VALID Strava access token, refreshing via the same M0
-// mechanism sync.SyncStrava uses (refresh-if-expired, persist the rotated
-// refresh token). Without this, GetActivityStreams 401s on a stale token (FIX 4).
-func (e *Engine) accessToken(ctx context.Context) (string, error) {
-	tok, err := e.store.GetStravaTokens()
-	if err != nil {
-		return "", err
-	}
-	if tok.ExpiresAt <= time.Now().Add(refreshBuffer).Unix() {
-		tr, rerr := e.strava.Refresh(ctx, tok.RefreshToken)
-		if rerr != nil {
-			return "", rerr
-		}
-		tok.AccessToken = tr.AccessToken
-		tok.RefreshToken = tr.RefreshToken
-		tok.ExpiresAt = tr.ExpiresAt
-		if tr.Scope != "" {
-			tok.Scope = tr.Scope
-		}
-		if tr.Athlete != nil {
-			tok.AthleteID = tr.Athlete.ID
-		}
-		if serr := e.store.SaveStravaTokens(tok); serr != nil {
-			return "", serr
-		}
-	}
-	return tok.AccessToken, nil
-}
-
-// resolveGarminID maps a Strava activity id to a Garmin download id by lazy
-// start-time match (±matchToleranceS) over garmin_activities, tie-broken by
-// closest duration (vs the Strava MovingTimeS) then closest distance. Run-type
-// filtering happens in the store query (LIKE '%running%'). Returns ok=false to
-// skip the FIT fallback (unknown activity, no candidate in window, or store error
-// → graceful degrade to the Strava no-HR series). M3.2.1 activates the dormant
-// M3.2 FIT fallback by replacing the prior (0,false) stub.
-func (e *Engine) resolveGarminID(stravaActivityID int64) (int64, bool) {
-	act, err := e.store.GetActivity(stravaActivityID)
-	if err != nil {
-		return 0, false // unknown activity → no match (graceful degrade)
-	}
-	cands, err := e.store.FindGarminActivitiesNear(act.StartTime, e.matchToleranceS)
-	if err != nil || len(cands) == 0 {
-		return 0, false
-	}
-
-	bestID := int64(0)
-	bestSet := false
-	var bestDur, bestDist float64
-	target := float64(act.MovingTimeS)
-	for _, c := range cands {
-		durDelta := 1e18
-		if c.DurationS != nil {
-			durDelta = absF(*c.DurationS - target)
-		}
-		distDelta := 1e18
-		if c.DistanceM != nil {
-			distDelta = absF(*c.DistanceM - act.DistanceM)
-		}
-		if !bestSet || durDelta < bestDur || (durDelta == bestDur && distDelta < bestDist) {
-			bestID, bestDur, bestDist, bestSet = c.GarminActivityID, durDelta, distDelta, true
-		}
-	}
-	if !bestSet {
-		return 0, false
-	}
-	return bestID, true
-}
-
-// absF is the float64 absolute value (avoids a math import for one call).
-func absF(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
+// resolveGarminID is identity in M4: activities.activity_id IS the Garmin
+// download id. Always (id, true). The dormant match path was removed with
+// garmin_activities.
+func (e *Engine) resolveGarminID(activityID int64) (int64, bool) {
+	return activityID, true
 }
