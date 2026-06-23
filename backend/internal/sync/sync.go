@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"strings"
 	"time"
 
 	"help-my-run/backend/internal/garmin"
@@ -119,7 +120,7 @@ func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv [
 	for _, a := range out.Activities {
 		atype := ""
 		if a.ActivityType != nil {
-			atype = *a.ActivityType
+			atype = canonicalActivityType(*a.ActivityType)
 		}
 		dist := 0.0
 		if a.DistanceM != nil {
@@ -148,6 +149,29 @@ func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv [
 		synced++
 	}
 	return okResult(s, source, synced)
+}
+
+// canonicalActivityType maps a Garmin activityType.typeKey (lowercase snake_case
+// such as "running", "trail_running", "treadmill_running", "virtual_run") to the
+// canonical run vocabulary the rest of the system expects ({Run, TrailRun,
+// VirtualRun}, matching metrics.runTypes). Garmin's whole run family contains the
+// substring "run" while non-run types (cycling, lap_swimming, strength_training,
+// hiking, walking, yoga, …) do not, so non-run keys pass through unchanged — only
+// runs matter downstream. Normalizing here, at the Go ingest boundary, keeps
+// metrics.IsRun and all existing test fixtures (which seed "Run") working without
+// touching any downstream consumer.
+func canonicalActivityType(garminTypeKey string) string {
+	k := strings.ToLower(garminTypeKey)
+	switch {
+	case strings.Contains(k, "trail") && strings.Contains(k, "run"):
+		return "TrailRun"
+	case strings.Contains(k, "virtual") && strings.Contains(k, "run"):
+		return "VirtualRun"
+	case strings.Contains(k, "run"):
+		return "Run"
+	default:
+		return garminTypeKey
+	}
 }
 
 // f64ptrToI64 dereferences a nullable worker duration to a rounded int64,

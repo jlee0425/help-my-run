@@ -87,6 +87,14 @@ func TestIsRun(t *testing.T) {
 		{"Workout", false},
 		{"WeightTraining", false},
 		{"", false},
+		// Defense-in-depth: raw Garmin run typeKeys that bypass normalization
+		// must still count as runs (substring "run"); non-run keys must not.
+		{"running", true},
+		{"treadmill_running", true},
+		{"trail_running", true},
+		{"cycling", false},
+		{"lap_swimming", false},
+		{"strength_training", false},
 	}
 	for _, tt := range tests {
 		if got := isRun(tt.typ); got != tt.want {

@@ -138,7 +138,7 @@ type StreamAnalysis struct {
 	PaHRFirst     *float64   `json:"pa_hr_first"`
 	PaHRSecond    *float64   `json:"pa_hr_second"`
 	Zones         ZoneBounds `json:"zones"`       // boundaries used (snapshot)
-	Source        string     `json:"source"`      // "strava"|"garmin"; engine sets
+	Source        string     `json:"source"`      // always "garmin" in M4 (the opaque fetch-log key aside); engine sets
 	ComputedAt    string     `json:"computed_at"` // RFC3339 UTC; caller sets
 }
 

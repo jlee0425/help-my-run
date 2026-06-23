@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"help-my-run/backend/internal/garmin"
+	"help-my-run/backend/internal/metrics"
 	"help-my-run/backend/internal/store"
 )
 
@@ -64,8 +65,21 @@ func TestSyncGarminUpsertsActivitiesAndRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetActivity: %v", err)
 	}
-	if a.Type != "running" {
-		t.Errorf("activity type = %q, want running", a.Type)
+	// Garmin typeKey "running" is normalized to the canonical "Run" at ingest so
+	// metrics.IsRun (PascalCase set) matches it on real data.
+	if a.Type != "Run" {
+		t.Errorf("activity type = %q, want Run (canonicalized from Garmin running)", a.Type)
+	}
+	if !metrics.IsRun(a.Type) {
+		t.Errorf("IsRun(%q) = false, want true", a.Type)
+	}
+	// Garmin "trail_running" -> canonical "TrailRun".
+	at, err := s.GetActivity(14820005678)
+	if err != nil {
+		t.Fatalf("GetActivity (trail): %v", err)
+	}
+	if at.Type != "TrailRun" {
+		t.Errorf("trail activity type = %q, want TrailRun", at.Type)
 	}
 
 	// raw_json persisted from the worker for recovery.
@@ -78,6 +92,36 @@ func TestSyncGarminUpsertsActivitiesAndRecovery(t *testing.T) {
 	sl, _ := s.GetSyncLog("garmin")
 	if sl.Status != "ok" || sl.LastSyncedAt == nil {
 		t.Errorf("sync_log = %+v, want ok with last_synced_at", sl)
+	}
+}
+
+func TestCanonicalActivityType(t *testing.T) {
+	tests := []struct {
+		in      string
+		want    string
+		wantRun bool
+	}{
+		{"running", "Run", true},
+		{"trail_running", "TrailRun", true},
+		{"treadmill_running", "Run", true},
+		{"virtual_run", "VirtualRun", true},
+		{"track_running", "Run", true},
+		{"cycling", "cycling", false},
+		{"lap_swimming", "lap_swimming", false},
+		{"strength_training", "strength_training", false},
+		{"hiking", "hiking", false},
+		{"walking", "walking", false},
+		{"yoga", "yoga", false},
+		{"", "", false},
+	}
+	for _, tt := range tests {
+		got := canonicalActivityType(tt.in)
+		if got != tt.want {
+			t.Errorf("canonicalActivityType(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+		if isRun := metrics.IsRun(got); isRun != tt.wantRun {
+			t.Errorf("metrics.IsRun(canonicalActivityType(%q)=%q) = %v, want %v", tt.in, got, isRun, tt.wantRun)
+		}
 	}
 }
 
