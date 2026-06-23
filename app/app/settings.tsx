@@ -1,14 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
 import { useSettings } from '../src/api/settings';
-import { useStatus, useSync, useConnectStrava, useProfile, useUpdateProfile } from '../src/api/hooks';
+import { useStatus, useSync, useProfile, useUpdateProfile } from '../src/api/hooks';
 import type { AthleteProfile } from '../src/api/types';
 
 export default function SettingsScreen() {
   const settings = useSettings();
   const status = useStatus();
   const sync = useSync();
-  const connectStrava = useConnectStrava();
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
 
@@ -45,7 +44,6 @@ export default function SettingsScreen() {
     updateProfile.mutate(body);
   };
 
-  const stravaConnected = status.data?.strava.connected ?? false;
   const garminConnected = status.data?.garmin.connected ?? false;
 
   return (
@@ -80,21 +78,6 @@ export default function SettingsScreen() {
         <Text style={styles.buttonText}>Save</Text>
       </Pressable>
 
-      <Text style={styles.heading}>Strava</Text>
-      <Text testID="strava-status" style={styles.statusLine}>
-        {stravaConnected ? 'Connected' : 'Not connected'}
-      </Text>
-      <Pressable
-        testID="btn-strava-connect"
-        style={styles.button}
-        disabled={connectStrava.isPending}
-        onPress={() => connectStrava.mutate()}
-      >
-        <Text style={styles.buttonText}>
-          {connectStrava.isPending ? 'Connecting…' : 'Strava Connect'}
-        </Text>
-      </Pressable>
-
       <Text style={styles.heading}>Garmin</Text>
       <Text testID="garmin-status" style={styles.statusLine}>
         {garminConnected ? 'Connected' : 'Not connected'}
@@ -111,8 +94,7 @@ export default function SettingsScreen() {
       </Pressable>
       {sync.data ? (
         <Text testID="sync-result" style={styles.statusLine}>
-          Strava: {sync.data.strava.status} ({sync.data.strava.synced}) · Garmin:{' '}
-          {sync.data.garmin.status} ({sync.data.garmin.synced})
+          Garmin: {sync.data.garmin.status} ({sync.data.garmin.synced})
         </Text>
       ) : null}
 

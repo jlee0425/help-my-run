@@ -19,7 +19,7 @@ const analysis: StreamAnalysis = {
   time_in_zone: [{ zone: 2, seconds: 1800, pct: 100 }],
   decoupling_pct: 4.2, pa_hr_first: 0.0212, pa_hr_second: 0.0203,
   zones: { z1_hi: 116, z2_hi: 145, z3_hi: 157.5, z4_hi: 170 },
-  source: 'strava', computed_at: '2026-06-22T07:00:00Z',
+  source: 'garmin', computed_at: '2026-06-22T07:00:00Z',
 };
 
 function wrapper(client: QueryClient) {

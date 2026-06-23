@@ -17,7 +17,6 @@ jest.mock('expo-router', () => {
 });
 
 const statusData: Status = {
-  strava: { connected: true, athlete_id: 1, last_synced_at: '2026-06-19T05:00:30Z', last_run_at: '2026-06-19T05:00:30Z', status: 'ok', error: null },
   garmin: { connected: true, last_synced_at: '2026-06-19T05:00:42Z', last_run_at: '2026-06-19T05:00:42Z', status: 'ok', error: null },
   counts: { activities: 42, recovery_days: 30 },
 };
@@ -25,14 +24,14 @@ const statusData: Status = {
 const activitiesData: ActivitiesResponse = {
   activities: [
     {
-      strava_id: 14820001234, name: 'Morning Run', type: 'Run', sport_type: 'Run',
+      activity_id: 14820001234, name: 'Morning Run', type: 'Run', sport_type: 'Run',
       start_time: '2026-06-18T06:12:00Z', start_time_local: '2026-06-18T08:12:00',
       distance_m: 10240.5, moving_time_s: 3120, elapsed_time_s: 3200,
       avg_hr: 152.3, max_hr: 171, avg_speed: 3.28, max_speed: 4.91,
       avg_cadence: 86.5, elevation_gain_m: 84.0,
     },
     {
-      strava_id: 14820009999, name: 'Evening Jog', type: 'Run', sport_type: 'Run',
+      activity_id: 14820009999, name: 'Evening Jog', type: 'Run', sport_type: 'Run',
       start_time: '2026-06-17T18:00:00Z', start_time_local: '2026-06-17T20:00:00',
       distance_m: 5000, moving_time_s: 1500, elapsed_time_s: 1520,
       avg_hr: null, max_hr: null, avg_speed: null, max_speed: null,
@@ -104,9 +103,8 @@ import HomeScreen from '../index';
 // render() is async in @testing-library/react-native v14 (React 19
 // test-renderer), so each test awaits it and queries the returned result.
 describe('HomeScreen', () => {
-  it('renders connection status for both sources', async () => {
+  it('renders the Garmin connection status', async () => {
     const { getByTestId } = await render(<HomeScreen />);
-    expect(getByTestId('home-strava-status').props.children).toContain('Connected');
     expect(getByTestId('home-garmin-status').props.children).toContain('Connected');
   });
 
