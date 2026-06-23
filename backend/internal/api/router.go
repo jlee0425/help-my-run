@@ -15,15 +15,13 @@ import (
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 	"help-my-run/backend/internal/streams"
 )
 
-// SyncFunc runs both syncs and returns flattened per-source results:
-// (stravaStatus, stravaSynced, stravaErr, garminStatus, garminSynced, garminErr).
-// Wiring (main.go) adapts the sync package to this signature so the api package
-// does not import sync (avoids an import cycle and keeps handlers testable).
-type SyncFunc func(ctx context.Context) (string, int, *string, string, int, *string)
+// SyncFunc runs the Garmin sync and returns the flattened result:
+// (status, synced, err). Wiring (main.go) adapts the sync package to this
+// signature so the api package does not import sync (avoids an import cycle).
+type SyncFunc func(ctx context.Context) (string, int, *string)
 
 // Coach is the M1 plan-engine seam, injected from main.go (avoids an import
 // cycle: api must not import coach). Extended in M2 with AdjustToday.
@@ -77,7 +75,6 @@ type Chat interface {
 // Deps are the handler dependencies injected by main.go (and tests).
 type Deps struct {
 	Store    *store.Store
-	Strava   *strava.Client
 	APIToken string
 	SyncFunc SyncFunc
 	Coach    Coach    // M1
@@ -101,13 +98,11 @@ func NewRouter(d Deps) http.Handler {
 
 	// Public (no auth).
 	r.Get("/health", h.health)
-	r.Get("/api/strava/callback", h.stravaCallback)
 
 	// Protected.
 	r.Group(func(r chi.Router) {
 		r.Use(BearerAuth(d.APIToken))
 		r.Get("/api/status", h.status)
-		r.Get("/api/strava/connect", h.stravaConnect)
 		r.Post("/api/sync", h.sync)
 		r.Get("/api/activities", h.activities)
 		r.Get("/api/recovery", h.recovery)

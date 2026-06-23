@@ -10,7 +10,6 @@ import (
 
 	"help-my-run/backend/internal/progress"
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 )
 
 // newProgressServer wires a server whose Progress seam is the given fake.
@@ -26,10 +25,9 @@ func newProgressServer(t *testing.T, fp *fakeProgress) http.Handler {
 	}
 	deps := Deps{
 		Store:    s,
-		Strava:   strava.NewWithBase("1", "x", "http://cb", "http://unused"),
 		APIToken: testToken,
-		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
-			return "ok", 0, nil, "ok", 0, nil
+		SyncFunc: func(ctx context.Context) (string, int, *string) {
+			return "ok", 0, nil
 		},
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),

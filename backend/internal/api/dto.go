@@ -25,23 +25,13 @@ type sourceStatus struct {
 	Status       string  `json:"status"`
 	Error        *string `json:"error"`
 }
-type stravaStatus struct {
-	sourceStatus
-	AthleteID *int64 `json:"athlete_id"`
-}
 type statusCounts struct {
 	Activities   int `json:"activities"`
 	RecoveryDays int `json:"recovery_days"`
 }
 type statusResp struct {
-	Strava stravaStatus `json:"strava"`
 	Garmin sourceStatus `json:"garmin"`
 	Counts statusCounts `json:"counts"`
-}
-
-// --- /api/strava/connect ---
-type connectResp struct {
-	AuthorizeURL string `json:"authorizeUrl"`
 }
 
 // --- /api/sync ---
@@ -51,7 +41,6 @@ type syncSourceResult struct {
 	Error  *string `json:"error"`
 }
 type syncResp struct {
-	Strava syncSourceResult `json:"strava"`
 	Garmin syncSourceResult `json:"garmin"`
 }
 

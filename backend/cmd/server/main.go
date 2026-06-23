@@ -25,7 +25,6 @@ import (
 	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/scheduler"
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 	"help-my-run/backend/internal/streams"
 	syncpkg "help-my-run/backend/internal/sync"
 )
@@ -37,7 +36,6 @@ const syncInterval = 6 * time.Hour
 type App struct {
 	Store    *store.Store
 	Handler  http.Handler
-	Strava   *strava.Client
 	Runner   garmin.Runner
 	Cfg      *config.Config
 	Coach    *coach.Coach     // M2: shared coach engine (also drives the agent)
@@ -49,8 +47,8 @@ type App struct {
 }
 
 // Wire builds the full application graph from config: opens + migrates the
-// store, constructs the Strava client and Garmin runner, and builds the router
-// with a SyncFunc adapter that runs SyncAll.
+// store, constructs the Garmin runner, and builds the router with a SyncFunc
+// adapter that runs SyncAll.
 func Wire(cfg *config.Config) (*App, error) {
 	s, err := store.Open(cfg.DBPath)
 	if err != nil {
@@ -61,16 +59,14 @@ func Wire(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	stravaClient := strava.New(cfg.StravaClientID, cfg.StravaClientSecret, cfg.StravaRedirectURL)
 	runner := garmin.Runner{Python: cfg.PythonBin, Script: cfg.WorkerScript}
 	extraEnv := garminEnv(cfg)
 
-	streamsEngine := streams.New(s, stravaClient, runner, extraEnv, cfg.GarminMatchToleranceS)
+	streamsEngine := streams.New(s, runner, extraEnv)
 
-	syncFunc := func(ctx context.Context) (string, int, *string, string, int, *string) {
-		res := syncpkg.SyncAll(ctx, s, stravaClient, runner, extraEnv, streamTrickle(cfg, streamsEngine))
-		return res.Strava.Status, res.Strava.Synced, res.Strava.Error,
-			res.Garmin.Status, res.Garmin.Synced, res.Garmin.Error
+	syncFunc := func(ctx context.Context) (string, int, *string) {
+		res := syncpkg.SyncAll(ctx, s, runner, extraEnv, streamTrickle(cfg, streamsEngine))
+		return res.Garmin.Status, res.Garmin.Synced, res.Garmin.Error
 	}
 
 	llmClient := &llm.Client{
@@ -85,7 +81,7 @@ func Wire(cfg *config.Config) (*App, error) {
 	pushClient := push.NewClient(cfg.ExpoPushBaseURL)
 	dailyAgent := agent.New(
 		s,
-		agent.NewRealSyncer(s, stravaClient, runner, extraEnv),
+		agent.NewRealSyncer(s, runner, extraEnv),
 		coachEngine,
 		pushClient,
 		agentClock{},
@@ -94,7 +90,6 @@ func Wire(cfg *config.Config) (*App, error) {
 
 	handler := api.NewRouter(api.Deps{
 		Store:    s,
-		Strava:   stravaClient,
 		APIToken: cfg.APIToken,
 		SyncFunc: syncFunc,
 		Coach:    coachEngine,
@@ -109,7 +104,6 @@ func Wire(cfg *config.Config) (*App, error) {
 	return &App{
 		Store:    s,
 		Handler:  handler,
-		Strava:   stravaClient,
 		Runner:   runner,
 		Cfg:      cfg,
 		Coach:    coachEngine,
@@ -217,13 +211,11 @@ func main() {
 	defer stop()
 
 	// Periodic sync ticker (the agentic schedule is M2; this is plain periodic).
-	stravaClient := app.Strava
 	runner := app.Runner
 	extraEnv := garminEnv(cfg)
 	syncOnce := func(c context.Context) {
-		res := syncpkg.SyncAll(c, app.Store, stravaClient, runner, extraEnv, streamTrickle(cfg, app.Streams))
-		log.Printf("sync: strava=%s/%d garmin=%s/%d",
-			res.Strava.Status, res.Strava.Synced, res.Garmin.Status, res.Garmin.Synced)
+		res := syncpkg.SyncAll(c, app.Store, runner, extraEnv, streamTrickle(cfg, app.Streams))
+		log.Printf("sync: garmin=%s/%d", res.Garmin.Status, res.Garmin.Synced)
 	}
 	// M0 follow-up #2: run once on boot, then on the interval.
 	runSyncOnBoot(ctx, syncOnce)

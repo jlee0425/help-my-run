@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 )
 
 // newChatServer wires a server whose Chat seam is the given fake, returning the
@@ -26,7 +25,6 @@ func newChatServer(t *testing.T, fc *fakeChat) (http.Handler, *store.Store) {
 	}
 	deps := Deps{
 		Store:    s,
-		Strava:   strava.NewWithBase("1", "x", "http://cb", "http://unused"),
 		APIToken: testToken,
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),

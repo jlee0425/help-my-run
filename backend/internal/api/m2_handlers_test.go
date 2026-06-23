@@ -229,9 +229,9 @@ func TestAgentRunInvokesAgentAndReturnsResult(t *testing.T) {
 		Action: "SOFTEN", Source: "ai", Stale: false, Pushed: true,
 	}}
 	h2 := NewRouter(Deps{
-		Store: s, Strava: nil, APIToken: testToken,
-		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
-			return "ok", 0, nil, "ok", 0, nil
+		Store: s, APIToken: testToken,
+		SyncFunc: func(ctx context.Context) (string, int, *string) {
+			return "ok", 0, nil
 		},
 		Coach: &fakeCoach{}, ImageDir: t.TempDir(), Agent: fa, Pusher: &fakePusher{},
 	})
