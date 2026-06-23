@@ -1,9 +1,0 @@
-{
-  "token_type": "Bearer",
-  "access_token": "new-access",
-  "refresh_token": "new-refresh",
-  "expires_at": 1737000000,
-  "expires_in": 21600,
-  "scope": "read,activity:read_all",
-  "athlete": { "id": 12345678 }
-}
