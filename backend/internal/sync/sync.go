@@ -4,6 +4,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"time"
 
 	"help-my-run/backend/internal/garmin"
@@ -228,19 +229,46 @@ func SyncGarmin(ctx context.Context, s *store.Store, r garmin.Runner, extraEnv [
 		synced++
 	}
 	for _, a := range out.Activities {
-		if err := s.UpsertGarminActivity(store.GarminActivityRow{
-			GarminActivityID: a.GarminActivityID,
-			StartTime:        a.StartTime,
-			DurationS:        a.DurationS,
-			DistanceM:        a.DistanceM,
-			ActivityType:     a.ActivityType,
-			RawJSON:          rawString(a.RawJSON),
+		atype := ""
+		if a.ActivityType != nil {
+			atype = *a.ActivityType
+		}
+		dist := 0.0
+		if a.DistanceM != nil {
+			dist = *a.DistanceM
+		}
+		if err := s.UpsertActivity(store.Activity{
+			ActivityID:     a.GarminActivityID,
+			Name:           a.Name,
+			Type:           atype,
+			SportType:      nil, // Garmin list has no sportType
+			StartTime:      a.StartTime,
+			StartTimeLocal: a.StartTimeLocal,
+			DistanceM:      dist,
+			MovingTimeS:    f64ptrToI64(a.MovingTimeS),
+			ElapsedTimeS:   f64ptrToI64(a.ElapsedTimeS),
+			AvgHR:          a.AvgHR,
+			MaxHR:          a.MaxHR,
+			AvgSpeed:       a.AvgSpeed,
+			MaxSpeed:       a.MaxSpeed,
+			AvgCadence:     a.AvgCadence,
+			ElevationGainM: a.ElevationGainM,
+			RawJSON:        rawString(a.RawJSON),
 		}); err != nil {
 			return errResult(s, source, err)
 		}
 		synced++
 	}
 	return okResult(s, source, synced)
+}
+
+// f64ptrToI64 dereferences a nullable worker duration to a rounded int64,
+// defaulting nil to 0 (the activities INTEGER columns are NOT NULL).
+func f64ptrToI64(p *float64) int64 {
+	if p == nil {
+		return 0
+	}
+	return int64(math.Round(*p))
 }
 
 // rawString renders a json.RawMessage to a string for the raw_json column,
