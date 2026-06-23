@@ -10,10 +10,7 @@ import (
 // Config holds all runtime configuration. Field tags map to the env var names
 // defined in the M0 contracts (§4).
 type Config struct {
-	StravaClientID     string `envconfig:"STRAVA_CLIENT_ID" required:"true"`
-	StravaClientSecret string `envconfig:"STRAVA_CLIENT_SECRET" required:"true"`
-	StravaRedirectURL  string `envconfig:"STRAVA_REDIRECT_URL" required:"true"`
-	APIToken           string `envconfig:"API_TOKEN" required:"true"`
+	APIToken string `envconfig:"API_TOKEN" required:"true"`
 
 	DBPath string `envconfig:"DB_PATH" default:"./helpmyrun.db"`
 	Port   string `envconfig:"PORT" default:"8080"`
@@ -45,9 +42,6 @@ type Config struct {
 	// M3.2: stream fetch trickle.
 	StreamRecentWeeks int `envconfig:"STREAM_RECENT_WEEKS" default:"12"`
 	StreamFetchBudget int `envconfig:"STREAM_FETCH_BUDGET" default:"10"`
-
-	// M3.2.1: Garmin .FIT fallback start-time match tolerance (seconds).
-	GarminMatchToleranceS int `envconfig:"GARMIN_MATCH_TOLERANCE_S" default:"120"`
 
 	// M3.3: chat rolling-history turns sent per claude -p call.
 	ChatHistoryTurns int `envconfig:"CHAT_HISTORY_TURNS" default:"6"`

@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 	"help-my-run/backend/internal/streams"
 )
 
@@ -26,10 +25,9 @@ func newStreamsServer(t *testing.T, fs *fakeStreams) http.Handler {
 	}
 	deps := Deps{
 		Store:    s,
-		Strava:   strava.NewWithBase("1", "x", "http://cb", "http://unused"),
 		APIToken: testToken,
-		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
-			return "ok", 0, nil, "ok", 0, nil
+		SyncFunc: func(ctx context.Context) (string, int, *string) {
+			return "ok", 0, nil
 		},
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),
@@ -189,18 +187,6 @@ func TestFetchStreamSuccess(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if !body.HasStream || body.DecouplingPct == nil || *body.DecouplingPct != 3.1 {
 		t.Errorf("dto = %+v, want has_stream true decoupling 3.1", body)
-	}
-}
-
-func TestFetchStreamRateLimited(t *testing.T) {
-	fs := &fakeStreams{fetchErr: &strava.ErrRateLimited{}}
-	h := newStreamsServer(t, fs)
-	rec := do(t, h, http.MethodPost, "/api/activities/123/stream/fetch", testToken)
-	if rec.Code != http.StatusTooManyRequests {
-		t.Fatalf("status = %d, want 429", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), `"error":"rate_limited"`) {
-		t.Errorf("body = %q, want rate_limited", rec.Body.String())
 	}
 }
 

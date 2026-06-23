@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 	"help-my-run/backend/internal/streams"
 )
 
@@ -75,7 +74,7 @@ func (h *handlers) activityAnalysis(w http.ResponseWriter, r *http.Request) {
 }
 
 // fetchStream serves POST /api/activities/{id}/stream/fetch — fetch-if-missing,
-// compute, cache, return. 429 on Strava rate limit; 500 otherwise.
+// compute, cache, return. 500 on fetch error.
 func (h *handlers) fetchStream(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseActivityID(w, r)
 	if !ok {
@@ -83,11 +82,6 @@ func (h *handlers) fetchStream(w http.ResponseWriter, r *http.Request) {
 	}
 	a, err := h.d.Streams.FetchAndAnalyze(r.Context(), id)
 	if err != nil {
-		var rl *strava.ErrRateLimited
-		if errors.As(err, &rl) {
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate_limited"})
-			return
-		}
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}

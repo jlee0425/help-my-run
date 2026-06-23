@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 )
 
 // newTestServerWithImageDir is like newTestServer but lets the caller inspect
@@ -28,10 +27,9 @@ func newTestServerWithImageDir(t *testing.T, imageDir string) (http.Handler, *st
 	}
 	deps := Deps{
 		Store:    s,
-		Strava:   strava.NewWithBase("12345", "secret", "http://localhost:8080/api/strava/callback", "https://www.strava.com"),
 		APIToken: testToken,
-		SyncFunc: func(ctx context.Context) (string, int, *string, string, int, *string) {
-			return "ok", 0, nil, "ok", 0, nil
+		SyncFunc: func(ctx context.Context) (string, int, *string) {
+			return "ok", 0, nil
 		},
 		Coach:    &fakeCoach{},
 		ImageDir: imageDir,
