@@ -1,0 +1,17 @@
+{
+  "activityId": 14820001234,
+  "activityName": "Morning Run",
+  "startTimeGMT": "2026-06-22 05:00:00",
+  "startTimeLocal": "2026-06-22 07:00:00",
+  "activityType": { "typeKey": "running" },
+  "distance": 10000.0,
+  "movingDuration": 3200.0,
+  "elapsedDuration": 3300.0,
+  "duration": 3300.0,
+  "averageHR": 148.0,
+  "maxHR": 168.0,
+  "averageSpeed": 3.05,
+  "maxSpeed": 4.2,
+  "averageRunningCadenceInStepsPerMinute": 172.0,
+  "elevationGain": 85.0
+}
