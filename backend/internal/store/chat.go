@@ -14,7 +14,7 @@ type ChatMessage struct {
 }
 
 // AppendChatMessage inserts one turn (server-stamped created_at) and returns its
-// new id. Mirrors InsertPlan (LastInsertId) + SaveOAuthState (now timestamp).
+// new id. Mirrors InsertPlan (LastInsertId) with a now timestamp.
 func (s *Store) AppendChatMessage(role, content string) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.DB.Exec(
