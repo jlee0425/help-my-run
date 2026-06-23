@@ -135,13 +135,13 @@ func ptrTime() string    { return time.Now().UTC().Format(time.RFC3339) }
 func TestActivitiesHandler(t *testing.T) {
 	h, s := newTestServer(t)
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 11, Name: "A", Type: "Run", SportType: sp("Run"),
+		ActivityID: 11, Name: "A", Type: "Run", SportType: sp("Run"),
 		StartTime: "2026-06-18T06:00:00Z", StartTimeLocal: sp("2026-06-18T08:00:00"),
 		DistanceM: 10000, MovingTimeS: 3000, ElapsedTimeS: 3050,
 		AvgHR: fp(150), RawJSON: "{}",
 	})
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 12, Name: "B", Type: "Run", SportType: nil,
+		ActivityID: 12, Name: "B", Type: "Run", SportType: nil,
 		StartTime: "2026-06-17T06:00:00Z", DistanceM: 5000,
 		MovingTimeS: 1500, ElapsedTimeS: 1500, RawJSON: "{}",
 	})
@@ -158,8 +158,8 @@ func TestActivitiesHandler(t *testing.T) {
 		t.Fatalf("len = %d, want 2", len(body.Activities))
 	}
 	// Most-recent-first.
-	if body.Activities[0].StravaID != 11 {
-		t.Errorf("first id = %d, want 11", body.Activities[0].StravaID)
+	if body.Activities[0].ActivityID != 11 {
+		t.Errorf("first id = %d, want 11", body.Activities[0].ActivityID)
 	}
 	if body.Activities[0].AvgHR == nil || *body.Activities[0].AvgHR != 150 {
 		t.Errorf("avg_hr = %v, want 150", body.Activities[0].AvgHR)

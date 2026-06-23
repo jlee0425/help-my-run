@@ -71,7 +71,7 @@ func decompressTestSeries(t *testing.T, gz []byte) testSeries {
 func seedActivity(t *testing.T, s *Store, id int64, startTime string) {
 	t.Helper()
 	if err := s.UpsertActivity(Activity{
-		StravaID: id, Name: "Run", Type: "Run",
+		ActivityID: id, Name: "Run", Type: "Run",
 		StartTime: startTime, DistanceM: 5000, MovingTimeS: 1500, ElapsedTimeS: 1500,
 		RawJSON: "{}",
 	}); err != nil {

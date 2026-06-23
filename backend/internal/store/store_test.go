@@ -1,7 +1,6 @@
 package store
 
 import (
-	"database/sql"
 	"path/filepath"
 	"testing"
 )
@@ -26,12 +25,11 @@ func TestOpenAndMigrate(t *testing.T) {
 	s := newTestStore(t)
 
 	wantTables := []string{
-		"strava_tokens", "activities", "activity_splits",
+		"activities", "activity_splits",
 		"garmin_sleep", "garmin_hrv", "garmin_body_battery", "garmin_rhr",
 		"garmin_vo2max",
 		"sync_log",
 		"activity_streams", "stream_analyses", "stream_fetch_log",
-		"garmin_activities",
 		"chat_messages",
 	}
 	for _, tbl := range wantTables {
@@ -76,51 +74,83 @@ func TestMigrateIdempotent(t *testing.T) {
 	}
 }
 
-func TestStravaTokensRoundTrip(t *testing.T) {
+func TestMigration00009RekeysAndDrops(t *testing.T) {
 	s := newTestStore(t)
 
-	// Not connected yet.
-	if _, err := s.GetStravaTokens(); err != ErrNotFound {
-		t.Fatalf("GetStravaTokens() on empty = %v, want ErrNotFound", err)
-	}
-
-	in := StravaTokens{
-		AccessToken:  "acc",
-		RefreshToken: "ref",
-		ExpiresAt:    1737000000,
-		Scope:        "read,activity:read_all",
-		AthleteID:    12345678,
-	}
-	if err := s.SaveStravaTokens(in); err != nil {
-		t.Fatalf("SaveStravaTokens() error = %v", err)
-	}
-
-	got, err := s.GetStravaTokens()
+	// activities is re-keyed: activity_id exists, strava_id does not.
+	var col string
+	err := s.DB.QueryRow(
+		`SELECT name FROM pragma_table_info('activities') WHERE name='activity_id'`,
+	).Scan(&col)
 	if err != nil {
-		t.Fatalf("GetStravaTokens() error = %v", err)
+		t.Fatalf("activities.activity_id missing after 00009: %v", err)
 	}
-	if got.AccessToken != in.AccessToken || got.RefreshToken != in.RefreshToken ||
-		got.ExpiresAt != in.ExpiresAt || got.Scope != in.Scope || got.AthleteID != in.AthleteID {
-		t.Errorf("GetStravaTokens() = %+v, want %+v", got, in)
-	}
-
-	// Overwrite (id is always 1).
-	in.AccessToken = "acc2"
-	in.ExpiresAt = 1737099999
-	if err := s.SaveStravaTokens(in); err != nil {
-		t.Fatalf("SaveStravaTokens() overwrite error = %v", err)
-	}
-	got, _ = s.GetStravaTokens()
-	if got.AccessToken != "acc2" || got.ExpiresAt != 1737099999 {
-		t.Errorf("after overwrite got %+v, want AccessToken=acc2 ExpiresAt=1737099999", got)
+	if err := s.DB.QueryRow(
+		`SELECT name FROM pragma_table_info('activities') WHERE name='strava_id'`,
+	).Scan(&col); err == nil {
+		t.Errorf("activities.strava_id still present after 00009, want renamed away")
 	}
 
-	var rows int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM strava_tokens`).Scan(&rows); err != nil {
-		t.Fatalf("count strava_tokens: %v", err)
+	// Dropped tables are gone.
+	for _, tbl := range []string{"strava_tokens", "oauth_states", "garmin_activities"} {
+		var name string
+		err := s.DB.QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, tbl,
+		).Scan(&name)
+		if err == nil {
+			t.Errorf("table %q still present after 00009, want dropped", tbl)
+		}
 	}
-	if rows != 1 {
-		t.Errorf("strava_tokens row count = %d, want 1 (single-row table)", rows)
+
+	// FK to activities still resolves through the renamed PK column: inserting a
+	// split for an existing activity succeeds; an orphan split is rejected.
+	if err := s.UpsertActivity(Activity{
+		ActivityID: 4242, Name: "fk", Type: "Run", StartTime: "2026-06-22T05:00:00Z",
+		DistanceM: 1000, MovingTimeS: 300, ElapsedTimeS: 300, RawJSON: "{}",
+	}); err != nil {
+		t.Fatalf("UpsertActivity for FK check: %v", err)
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO activity_splits (activity_id, idx, distance_m, elapsed_time_s) VALUES (4242,1,1000,300)`,
+	); err != nil {
+		t.Errorf("split insert for existing activity failed (FK rewrite broken?): %v", err)
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO activity_splits (activity_id, idx, distance_m, elapsed_time_s) VALUES (9999,1,1000,300)`,
+	); err == nil {
+		t.Errorf("orphan split insert succeeded, want FK violation (FK rewrite broken)")
+	}
+
+	// activities is referenced by THREE FK tables — also assert the rewrite for
+	// activity_streams (00006) and stream_analyses (00006), not just
+	// activity_splits (00001). Each FK clause REFERENCES activities(strava_id)
+	// (00006_m3_2_streams.sql) must be auto-rewritten to activities(activity_id)
+	// on RENAME COLUMN: a child for the existing activity inserts; an orphan rejects.
+	if _, err := s.DB.Exec(
+		`INSERT INTO activity_streams (activity_id, source, series_gz, fetched_at)
+		 VALUES (4242,'garmin',x'00','2026-06-22T05:00:00Z')`,
+	); err != nil {
+		t.Errorf("activity_streams insert for existing activity failed (FK rewrite broken?): %v", err)
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO activity_streams (activity_id, source, series_gz, fetched_at)
+		 VALUES (9999,'garmin',x'00','2026-06-22T05:00:00Z')`,
+	); err == nil {
+		t.Errorf("orphan activity_streams insert succeeded, want FK violation (FK rewrite broken)")
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO stream_analyses
+		   (activity_id, time_in_zone_json, zones_json, has_hr, computed_at)
+		 VALUES (4242,'{}','{}',1,'2026-06-22T05:00:00Z')`,
+	); err != nil {
+		t.Errorf("stream_analyses insert for existing activity failed (FK rewrite broken?): %v", err)
+	}
+	if _, err := s.DB.Exec(
+		`INSERT INTO stream_analyses
+		   (activity_id, time_in_zone_json, zones_json, has_hr, computed_at)
+		 VALUES (9999,'{}','{}',1,'2026-06-22T05:00:00Z')`,
+	); err == nil {
+		t.Errorf("orphan stream_analyses insert succeeded, want FK violation (FK rewrite broken)")
 	}
 }
 
@@ -172,7 +202,7 @@ func TestUpsertAndListActivities(t *testing.T) {
 	s := newTestStore(t)
 
 	a1 := Activity{
-		StravaID: 100, Name: "Morning Run", Type: "Run", SportType: strp("Run"),
+		ActivityID: 100, Name: "Morning Run", Type: "Run", SportType: strp("Run"),
 		StartTime: "2026-06-17T06:00:00Z", StartTimeLocal: strp("2026-06-17T08:00:00"),
 		DistanceM: 10000, MovingTimeS: 3000, ElapsedTimeS: 3100,
 		AvgHR: f64p(150), MaxHR: f64p(170), AvgSpeed: f64p(3.3), MaxSpeed: f64p(4.9),
@@ -180,7 +210,7 @@ func TestUpsertAndListActivities(t *testing.T) {
 		RawJSON: `{"id":100}`,
 	}
 	a2 := Activity{
-		StravaID: 200, Name: "Evening Run", Type: "Run", SportType: strp("TrailRun"),
+		ActivityID: 200, Name: "Evening Run", Type: "Run", SportType: strp("TrailRun"),
 		StartTime: "2026-06-18T18:00:00Z", StartTimeLocal: nil,
 		DistanceM: 5000, MovingTimeS: 1500, ElapsedTimeS: 1500,
 		AvgHR: nil, MaxHR: nil, AvgSpeed: nil, MaxSpeed: nil,
@@ -203,8 +233,8 @@ func TestUpsertAndListActivities(t *testing.T) {
 		t.Fatalf("ListActivities len = %d, want 2", len(got))
 	}
 	// Most-recent-first by start_time: a2 (06-18) before a1 (06-17).
-	if got[0].StravaID != 200 || got[1].StravaID != 100 {
-		t.Errorf("order = [%d,%d], want [200,100]", got[0].StravaID, got[1].StravaID)
+	if got[0].ActivityID != 200 || got[1].ActivityID != 100 {
+		t.Errorf("order = [%d,%d], want [200,100]", got[0].ActivityID, got[1].ActivityID)
 	}
 	// Nullable preserved on a2.
 	if got[0].AvgHR != nil {
@@ -225,14 +255,14 @@ func TestUpsertAndListActivities(t *testing.T) {
 		t.Fatalf("after re-upsert len = %d, want 2", len(got))
 	}
 	for _, a := range got {
-		if a.StravaID == 100 && a.Name != "Renamed Run" {
+		if a.ActivityID == 100 && a.Name != "Renamed Run" {
 			t.Errorf("a1.Name = %q, want %q", a.Name, "Renamed Run")
 		}
 	}
 
 	// limit clamps result count.
 	lim, _ := s.ListActivities(1)
-	if len(lim) != 1 || lim[0].StravaID != 200 {
+	if len(lim) != 1 || lim[0].ActivityID != 200 {
 		t.Errorf("ListActivities(1) = %v, want single [200]", lim)
 	}
 }
@@ -241,7 +271,7 @@ func TestUpsertSplits(t *testing.T) {
 	s := newTestStore(t)
 
 	a := Activity{
-		StravaID: 300, Name: "Splits Run", Type: "Run", SportType: strp("Run"),
+		ActivityID: 300, Name: "Splits Run", Type: "Run", SportType: strp("Run"),
 		StartTime: "2026-06-19T06:00:00Z", DistanceM: 4000,
 		MovingTimeS: 1200, ElapsedTimeS: 1200, RawJSON: `{"id":300}`,
 	}
@@ -434,155 +464,5 @@ func TestM1MigrationSeedsProfile(t *testing.T) {
 	_, err := s.DB.Exec(`INSERT INTO athlete_profile (id, updated_at) VALUES (2, 'x')`)
 	if err == nil {
 		t.Error("inserting id=2 succeeded, want CHECK (id = 1) violation")
-	}
-}
-
-func TestUpsertGarminActivity(t *testing.T) {
-	s := newTestStore(t)
-
-	// Insert one row with all fields.
-	if err := s.UpsertGarminActivity(GarminActivityRow{
-		GarminActivityID: 14820001234,
-		StartTime:        "2026-06-22 05:00:00",
-		DurationS:        f64p(3300),
-		DistanceM:        f64p(10000),
-		ActivityType:     strp("running"),
-		RawJSON:          `{"activityId":14820001234}`,
-	}); err != nil {
-		t.Fatalf("UpsertGarminActivity insert: %v", err)
-	}
-
-	// Nullable fields stored as NULL when nil.
-	if err := s.UpsertGarminActivity(GarminActivityRow{
-		GarminActivityID: 14820005678,
-		StartTime:        "2026-06-21 06:00:00",
-		DurationS:        nil,
-		DistanceM:        nil,
-		ActivityType:     nil,
-		RawJSON:          "null",
-	}); err != nil {
-		t.Fatalf("UpsertGarminActivity null-fields: %v", err)
-	}
-
-	var n int
-	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM garmin_activities`).Scan(&n); err != nil {
-		t.Fatalf("count: %v", err)
-	}
-	if n != 2 {
-		t.Fatalf("row count = %d, want 2", n)
-	}
-
-	// Verify stored values + NULL preservation.
-	var st, raw string
-	var dur, dist sql.NullFloat64
-	var atype sql.NullString
-	if err := s.DB.QueryRow(
-		`SELECT start_time, duration_s, distance_m, activity_type, raw_json
-		 FROM garmin_activities WHERE garmin_activity_id=?`, 14820005678).Scan(
-		&st, &dur, &dist, &atype, &raw); err != nil {
-		t.Fatalf("scan null row: %v", err)
-	}
-	if dur.Valid || dist.Valid || atype.Valid {
-		t.Errorf("null row: dur=%v dist=%v atype=%v, want all NULL", dur, dist, atype)
-	}
-	if raw != "null" {
-		t.Errorf("raw_json = %q, want %q", raw, "null")
-	}
-
-	// Re-upsert by garmin_activity_id -> update, not duplicate.
-	if err := s.UpsertGarminActivity(GarminActivityRow{
-		GarminActivityID: 14820001234,
-		StartTime:        "2026-06-22 05:00:30",
-		DurationS:        f64p(3400),
-		DistanceM:        f64p(10100),
-		ActivityType:     strp("trail_running"),
-		RawJSON:          `{"activityId":14820001234,"v":2}`,
-	}); err != nil {
-		t.Fatalf("re-upsert: %v", err)
-	}
-	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM garmin_activities`).Scan(&n)
-	if n != 2 {
-		t.Fatalf("after re-upsert count = %d, want 2 (idempotent by PK)", n)
-	}
-	var gotType string
-	_ = s.DB.QueryRow(`SELECT activity_type FROM garmin_activities WHERE garmin_activity_id=?`, 14820001234).Scan(&gotType)
-	if gotType != "trail_running" {
-		t.Errorf("activity_type after re-upsert = %q, want trail_running", gotType)
-	}
-}
-
-func TestFindGarminActivitiesNear(t *testing.T) {
-	s := newTestStore(t)
-
-	// Seed: query anchor is RFC3339 "2026-06-22T05:00:00Z".
-	// A) exactly on time, running                          -> in window, delta 0
-	// B) +60s, running                                     -> in window, delta 60
-	// C) +119s, treadmill_running                          -> in window (run-type), delta 119
-	// D) +200s, running                                    -> OUTSIDE 120s window
-	// E) on time, cycling                                  -> run-type filtered OUT
-	mustUpsertGA(t, s, 1, "2026-06-22 05:00:00", f64p(3300), f64p(10000), "running")
-	mustUpsertGA(t, s, 2, "2026-06-22 05:01:00", f64p(3200), f64p(9800), "running")
-	mustUpsertGA(t, s, 3, "2026-06-22 05:01:59", f64p(3100), f64p(9500), "treadmill_running")
-	mustUpsertGA(t, s, 4, "2026-06-22 05:03:20", f64p(3300), f64p(10000), "running")
-	mustUpsertGA(t, s, 5, "2026-06-22 05:00:00", f64p(3300), f64p(40000), "cycling")
-
-	cands, err := s.FindGarminActivitiesNear("2026-06-22T05:00:00Z", 120)
-	if err != nil {
-		t.Fatalf("FindGarminActivitiesNear: %v", err)
-	}
-	// In-window run-type rows: 1, 2, 3 (NOT 4 outside window, NOT 5 cycling).
-	if len(cands) != 3 {
-		t.Fatalf("len = %d, want 3 (ids 1,2,3); got %+v", len(cands), cands)
-	}
-	// Ordered by absolute start-time delta ascending: 1 (0s), 2 (60s), 3 (119s).
-	if cands[0].GarminActivityID != 1 || cands[1].GarminActivityID != 2 || cands[2].GarminActivityID != 3 {
-		t.Errorf("order = [%d,%d,%d], want [1,2,3]",
-			cands[0].GarminActivityID, cands[1].GarminActivityID, cands[2].GarminActivityID)
-	}
-	// Candidate carries duration/distance for the engine tie-break.
-	if cands[0].DurationS == nil || *cands[0].DurationS != 3300 {
-		t.Errorf("cand[0].DurationS = %v, want 3300", cands[0].DurationS)
-	}
-	if cands[0].DistanceM == nil || *cands[0].DistanceM != 10000 {
-		t.Errorf("cand[0].DistanceM = %v, want 10000", cands[0].DistanceM)
-	}
-
-	// Tie-break shape: two equidistant candidates (±60s) -> both returned, both
-	// in window, caller resolves by duration/distance.
-	tie, err := s.FindGarminActivitiesNear("2026-06-22T05:00:30Z", 120)
-	if err != nil {
-		t.Fatalf("tie query: %v", err)
-	}
-	// At 05:00:30: id1 (-30s), id2 (+30s) both delta 30; id3 (+89s); id4 (+170s) out.
-	if len(tie) != 3 {
-		t.Fatalf("tie len = %d, want 3 (ids 1,2,3)", len(tie))
-	}
-	// First two are the equidistant pair (1 and 2 in either order), third is id3.
-	if tie[2].GarminActivityID != 3 {
-		t.Errorf("tie[2] = %d, want 3 (furthest in-window)", tie[2].GarminActivityID)
-	}
-	gotPair := map[int64]bool{tie[0].GarminActivityID: true, tie[1].GarminActivityID: true}
-	if !gotPair[1] || !gotPair[2] {
-		t.Errorf("tie pair = %v, want {1,2}", gotPair)
-	}
-
-	// No-match -> empty slice (not error).
-	none, err := s.FindGarminActivitiesNear("2026-06-22T09:00:00Z", 120)
-	if err != nil {
-		t.Fatalf("no-match query: %v", err)
-	}
-	if len(none) != 0 {
-		t.Errorf("no-match len = %d, want 0", len(none))
-	}
-}
-
-// mustUpsertGA seeds one garmin_activities row or fails the test.
-func mustUpsertGA(t *testing.T, s *Store, id int64, start string, dur, dist *float64, atype string) {
-	t.Helper()
-	if err := s.UpsertGarminActivity(GarminActivityRow{
-		GarminActivityID: id, StartTime: start, DurationS: dur, DistanceM: dist,
-		ActivityType: strp(atype), RawJSON: "{}",
-	}); err != nil {
-		t.Fatalf("seed garmin_activity %d: %v", id, err)
 	}
 }

@@ -142,7 +142,7 @@ func (s *Store) ListStreamAnalyses(limit int) ([]StreamAnalysisRow, error) {
 		SELECT sa.activity_id, sa.time_in_zone_json, sa.decoupling_pct, sa.pa_hr_first,
 		       sa.pa_hr_second, sa.zones_json, sa.has_hr, sa.computed_at
 		FROM stream_analyses sa
-		JOIN activities a ON a.strava_id = sa.activity_id
+		JOIN activities a ON a.activity_id = sa.activity_id
 		ORDER BY a.start_time DESC
 		LIMIT ?`, limit)
 	if err != nil {
@@ -234,9 +234,9 @@ func (s *Store) UpdateStreamFetchLog(fl StreamFetchLog) error {
 // the recent-window trickle.
 func (s *Store) ListRecentRunsWithoutStream(sinceISO string, limit int) ([]int64, error) {
 	rows, err := s.DB.Query(`
-		SELECT a.strava_id
+		SELECT a.activity_id
 		FROM activities a
-		LEFT JOIN activity_streams st ON st.activity_id = a.strava_id
+		LEFT JOIN activity_streams st ON st.activity_id = a.activity_id
 		WHERE st.activity_id IS NULL
 		  AND a.type = 'Run'
 		  AND a.start_time >= ?

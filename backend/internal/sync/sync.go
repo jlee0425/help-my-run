@@ -122,7 +122,7 @@ func strPtr(s string) *string {
 
 func mapActivity(a strava.SummaryActivity, raw string) store.Activity {
 	return store.Activity{
-		StravaID:       a.ID,
+		ActivityID:     a.ID,
 		Name:           a.Name,
 		Type:           a.Type,
 		SportType:      strPtr(a.SportType),
