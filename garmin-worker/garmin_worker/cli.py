@@ -31,6 +31,17 @@ except Exception:  # pragma: no cover - import guard for environments w/o lib
 PROG = "worker.py"
 
 
+def _is_rate_limited(exc: BaseException) -> bool:
+    """True when an exception looks like Garmin's per-IP login rate limit (429).
+
+    garminconnect's login() makes a single call across both transports, so the
+    429 surfaces as one exception (e.g. "mobile+cffi/mobile+requests returned
+    429"). We only detect+message here — we do not split transports or retry.
+    """
+    text = str(exc).lower()
+    return "429" in text or "rate limit" in text or "rate limited" in text
+
+
 def validate_date(value: str) -> str:
     """Accept exactly YYYY-MM-DD; raise ValueError otherwise.
 
@@ -131,7 +142,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
-        except Exception as exc:  # garminconnect auth/connection errors
+        except Exception as exc:  # garminconnect auth/connection/rate-limit errors
+            if _is_rate_limited(exc):
+                print(
+                    "Garmin rate-limited your login (HTTP 429, per-IP). Wait ~15-60 min "
+                    "before retrying — repeated attempts extend the lockout. Tip: run this "
+                    "once from a different network (e.g. phone hotspot) to populate the token "
+                    "store; the backend then reuses it. Do NOT retry in a loop.",
+                    file=sys.stderr,
+                )
+                return 3
             print(f"login failed: {exc}", file=sys.stderr)
             return 1
         print(f"login ok; tokens saved to {client.tokenstore_path()}", file=sys.stderr)

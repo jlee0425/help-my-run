@@ -214,6 +214,10 @@ func main() {
 	runner := app.Runner
 	extraEnv := garminEnv(cfg)
 	syncOnce := func(c context.Context) {
+		if !syncpkg.TokenStoreReady(cfg.GarminTokenstore) {
+			log.Printf("sync: skipped — Garmin token store not found at %s; run `make garmin-login` once (avoids hitting Garmin's login rate limit)", cfg.GarminTokenstore)
+			return
+		}
 		res := syncpkg.SyncAll(c, app.Store, runner, extraEnv, streamTrickle(cfg, app.Streams))
 		log.Printf("sync: garmin=%s/%d", res.Garmin.Status, res.Garmin.Synced)
 	}
