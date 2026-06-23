@@ -39,7 +39,7 @@ func (f *fakeFetcher) FetchAndAnalyze(ctx context.Context, id int64) error {
 
 func seedRun(t *testing.T, s *store.Store, id int64, st string) {
 	t.Helper()
-	if err := s.UpsertActivity(store.Activity{StravaID: id, Name: "r", Type: "Run",
+	if err := s.UpsertActivity(store.Activity{ActivityID: id, Name: "r", Type: "Run",
 		StartTime: st, DistanceM: 5000, MovingTimeS: 1500, ElapsedTimeS: 1500, RawJSON: "{}"}); err != nil {
 		t.Fatalf("seed run %d: %v", id, err)
 	}

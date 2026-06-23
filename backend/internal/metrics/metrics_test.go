@@ -99,15 +99,15 @@ func TestDistanceKmInWindow(t *testing.T) {
 	now := mustTime(t, "2026-06-22T12:00:00Z") // Monday
 	acts := []store.Activity{
 		// 2 days ago, run, 10 km -> in 7-day window.
-		{StravaID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
+		{ActivityID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
 		// 6 days ago, trail run, 5 km -> in 7-day window.
-		{StravaID: 2, Type: "TrailRun", StartTime: "2026-06-16T18:00:00Z", DistanceM: 5000},
+		{ActivityID: 2, Type: "TrailRun", StartTime: "2026-06-16T18:00:00Z", DistanceM: 5000},
 		// 10 days ago, run, 8 km -> outside 7-day, inside 28-day.
-		{StravaID: 3, Type: "Run", StartTime: "2026-06-12T06:00:00Z", DistanceM: 8000},
+		{ActivityID: 3, Type: "Run", StartTime: "2026-06-12T06:00:00Z", DistanceM: 8000},
 		// 2 days ago but a Ride -> excluded (not a run).
-		{StravaID: 4, Type: "Ride", StartTime: "2026-06-20T07:00:00Z", DistanceM: 40000},
+		{ActivityID: 4, Type: "Ride", StartTime: "2026-06-20T07:00:00Z", DistanceM: 40000},
 		// unparseable start -> skipped.
-		{StravaID: 5, Type: "Run", StartTime: "not-a-time", DistanceM: 99000},
+		{ActivityID: 5, Type: "Run", StartTime: "not-a-time", DistanceM: 99000},
 	}
 	// 7-day window: [now-7d, now] -> acts 1 (10) + 2 (5) = 15 km.
 	if got := distanceKmInWindow(acts, now.AddDate(0, 0, -7), now); got != 15 {
@@ -136,9 +136,9 @@ func nearlyEqual(got, want float64) bool { return math.Abs(got-want) <= 1e-9 }
 func TestWeeklyVolumeKm(t *testing.T) {
 	now := mustTime(t, "2026-06-22T12:00:00Z")
 	acts := []store.Activity{
-		{StravaID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
-		{StravaID: 2, Type: "Run", StartTime: "2026-06-17T06:00:00Z", DistanceM: 8200},
-		{StravaID: 3, Type: "Run", StartTime: "2026-06-10T06:00:00Z", DistanceM: 6000}, // >7d ago
+		{ActivityID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000},
+		{ActivityID: 2, Type: "Run", StartTime: "2026-06-17T06:00:00Z", DistanceM: 8200},
+		{ActivityID: 3, Type: "Run", StartTime: "2026-06-10T06:00:00Z", DistanceM: 6000}, // >7d ago
 	}
 	if got := weeklyVolumeKm(acts, now); !nearlyEqual(got, 18.2) {
 		t.Errorf("weeklyVolumeKm = %v, want 18.2", got)
@@ -152,11 +152,11 @@ func TestWeeklyVolumeKm(t *testing.T) {
 func TestFourWeekAvgKm(t *testing.T) {
 	now := mustTime(t, "2026-06-22T12:00:00Z")
 	acts := []store.Activity{
-		{StravaID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000}, // wk0
-		{StravaID: 2, Type: "Run", StartTime: "2026-06-14T06:00:00Z", DistanceM: 6000},  // wk1
-		{StravaID: 3, Type: "Run", StartTime: "2026-06-07T06:00:00Z", DistanceM: 8000},  // wk2
-		{StravaID: 4, Type: "Run", StartTime: "2026-05-30T06:00:00Z", DistanceM: 8000},  // wk3 (23 days ago - in)
-		{StravaID: 5, Type: "Run", StartTime: "2026-05-10T06:00:00Z", DistanceM: 50000}, // >28d ago, excluded
+		{ActivityID: 1, Type: "Run", StartTime: "2026-06-20T06:00:00Z", DistanceM: 10000}, // wk0
+		{ActivityID: 2, Type: "Run", StartTime: "2026-06-14T06:00:00Z", DistanceM: 6000},  // wk1
+		{ActivityID: 3, Type: "Run", StartTime: "2026-06-07T06:00:00Z", DistanceM: 8000},  // wk2
+		{ActivityID: 4, Type: "Run", StartTime: "2026-05-30T06:00:00Z", DistanceM: 8000},  // wk3 (23 days ago - in)
+		{ActivityID: 5, Type: "Run", StartTime: "2026-05-10T06:00:00Z", DistanceM: 50000}, // >28d ago, excluded
 	}
 	// 28-day total = 10+6+8+8 = 32 km; /4 = 8.0.
 	if got := fourWeekAvgKm(acts, now); !nearlyEqual(got, 8.0) {

@@ -53,12 +53,12 @@ func fp(v float64) *float64 { return &v }
 func seedTrendData(t *testing.T, s *store.Store) {
 	t.Helper()
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 1, Name: "easy", Type: "Run",
+		ActivityID: 1, Name: "easy", Type: "Run",
 		StartTime: "2026-06-15T06:00:00Z", DistanceM: 10000, MovingTimeS: 3300,
 		AvgHR: fp(145), RawJSON: "{}",
 	})
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 2, Name: "easy2", Type: "Run",
+		ActivityID: 2, Name: "easy2", Type: "Run",
 		StartTime: "2026-04-06T06:00:00Z", DistanceM: 10000, MovingTimeS: 3500,
 		AvgHR: fp(145), RawJSON: "{}",
 	})
@@ -179,12 +179,12 @@ func TestReportIncludesDecouplingSignal(t *testing.T) {
 	startNew := now.AddDate(0, 0, -3).Format(time.RFC3339)  // newest week
 	startOld := now.AddDate(0, 0, -40).Format(time.RFC3339) // ~6 weeks back, still in window
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 1, Name: "easy", Type: "Run",
+		ActivityID: 1, Name: "easy", Type: "Run",
 		StartTime: startNew, DistanceM: 10000, MovingTimeS: 3300,
 		AvgHR: fp(145), RawJSON: "{}",
 	})
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 2, Name: "easy2", Type: "Run",
+		ActivityID: 2, Name: "easy2", Type: "Run",
 		StartTime: startOld, DistanceM: 10000, MovingTimeS: 3500,
 		AvgHR: fp(145), RawJSON: "{}",
 	})

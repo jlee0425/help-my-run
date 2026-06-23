@@ -129,7 +129,7 @@ func (h *handlers) activities(w http.ResponseWriter, r *http.Request) {
 	out := make([]activityDTO, 0, len(rows))
 	for _, a := range rows {
 		out = append(out, activityDTO{
-			StravaID: a.StravaID, Name: a.Name, Type: a.Type, SportType: a.SportType,
+			ActivityID: a.ActivityID, Name: a.Name, Type: a.Type, SportType: a.SportType,
 			StartTime: a.StartTime, StartTimeLocal: a.StartTimeLocal,
 			DistanceM: a.DistanceM, MovingTimeS: a.MovingTimeS, ElapsedTimeS: a.ElapsedTimeS,
 			AvgHR: a.AvgHR, MaxHR: a.MaxHR, AvgSpeed: a.AvgSpeed, MaxSpeed: a.MaxSpeed,

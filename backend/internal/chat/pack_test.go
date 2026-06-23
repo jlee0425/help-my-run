@@ -59,7 +59,7 @@ func TestBuildContextPackCapsAndFlatten(t *testing.T) {
 		day := 28 - i // 2026-06-28 down to 2026-06-09
 		start := "2026-06-" + twoDigits(day) + "T06:00:00Z"
 		if err := s.UpsertActivity(store.Activity{
-			StravaID: int64(1000 + i), Name: "run", Type: "Run",
+			ActivityID: int64(1000 + i), Name: "run", Type: "Run",
 			StartTime: start, DistanceM: 10000, MovingTimeS: 3000,
 			AvgHR: f64p(150), MaxHR: f64p(170), AvgCadence: f64p(86), ElevationGainM: f64p(80),
 			RawJSON: "{}",
@@ -69,7 +69,7 @@ func TestBuildContextPackCapsAndFlatten(t *testing.T) {
 	}
 	// One non-run (Ride) must be filtered out by metrics.IsRun.
 	if err := s.UpsertActivity(store.Activity{
-		StravaID: 9999, Name: "ride", Type: "Ride",
+		ActivityID: 9999, Name: "ride", Type: "Ride",
 		StartTime: "2026-06-29T06:00:00Z", DistanceM: 40000, MovingTimeS: 3600, RawJSON: "{}",
 	}); err != nil {
 		t.Fatalf("seed ride: %v", err)

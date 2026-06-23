@@ -57,7 +57,7 @@ type syncResp struct {
 
 // --- /api/activities ---
 type activityDTO struct {
-	StravaID       int64    `json:"strava_id"`
+	ActivityID     int64    `json:"activity_id"`
 	Name           string   `json:"name"`
 	Type           string   `json:"type"`
 	SportType      *string  `json:"sport_type"`

@@ -161,7 +161,7 @@ func TestGeneratePlanUsesEditedWeekOverStored(t *testing.T) {
 func TestFitnessComputesFromStore(t *testing.T) {
 	s := newCoachStore(t)
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 1, Type: "Run", Name: "r", StartTime: "2026-06-19T06:00:00Z",
+		ActivityID: 1, Type: "Run", Name: "r", StartTime: "2026-06-19T06:00:00Z",
 		DistanceM: 6000, MovingTimeS: 2160, ElapsedTimeS: 2160, RawJSON: "{}",
 	})
 	c := New(s, &llm.Client{Runner: &captureRunner{}, Model: "m"}, "m", "/tmp/cfimg")

@@ -81,7 +81,7 @@ func TestSyncStravaRefreshesAndUpserts(t *testing.T) {
 	}
 	// Activity + lap upserted.
 	acts, _ := s.ListActivities(30)
-	if len(acts) != 1 || acts[0].StravaID != 900 {
+	if len(acts) != 1 || acts[0].ActivityID != 900 {
 		t.Fatalf("activities = %+v, want one id=900", acts)
 	}
 	var nLaps int
@@ -262,7 +262,7 @@ func TestSyncStravaCursorFromLatestActivity(t *testing.T) {
 	}
 	_ = s.SaveStravaTokens(store.StravaTokens{AccessToken: "acc", RefreshToken: "ref", ExpiresAt: 4102444800})
 	_ = s.UpsertActivity(store.Activity{
-		StravaID: 1, Type: "Run", Name: "r", StartTime: "2026-06-18T18:00:00Z",
+		ActivityID: 1, Type: "Run", Name: "r", StartTime: "2026-06-18T18:00:00Z",
 		DistanceM: 8000, MovingTimeS: 2400, ElapsedTimeS: 2400, RawJSON: "{}",
 	})
 

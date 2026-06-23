@@ -59,7 +59,7 @@ func (e *Engine) Report(ctx context.Context, weeks int) (ProgressReport, error) 
 func streamPoints(acts []store.Activity, saRows []store.StreamAnalysisRow) []StreamAnalysisPoint {
 	startByID := make(map[int64]string, len(acts))
 	for _, a := range acts {
-		startByID[a.StravaID] = a.StartTime
+		startByID[a.ActivityID] = a.StartTime
 	}
 	out := make([]StreamAnalysisPoint, 0, len(saRows))
 	for _, r := range saRows {
