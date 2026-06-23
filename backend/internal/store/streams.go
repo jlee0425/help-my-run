@@ -10,14 +10,14 @@ import (
 // SeriesGz is the gzipped JSON of the normalized streams.Series (a BLOB).
 type ActivityStream struct {
 	ActivityID int64
-	Source     string // "strava" | "garmin"
+	Source     string // always "garmin" in M4 (column retained for provenance)
 	SeriesGz   []byte
 	FetchedAt  string // RFC3339 UTC, set server-side
 }
 
 // UpsertActivityStream inserts or updates the raw stream for an activity by
-// activity_id (= Strava id). FetchedAt is set server-side to now (UTC RFC3339)
-// when empty.
+// activity_id (= Garmin activity id). FetchedAt is set server-side to now (UTC
+// RFC3339) when empty.
 func (s *Store) UpsertActivityStream(as ActivityStream) error {
 	if as.FetchedAt == "" {
 		as.FetchedAt = time.Now().UTC().Format(time.RFC3339)
@@ -160,9 +160,11 @@ func (s *Store) ListStreamAnalyses(limit int) ([]StreamAnalysisRow, error) {
 	return out, rows.Err()
 }
 
-// StreamFetchLog is the single-row (source='strava') trickle state for the
-// recent-window stream backfill. Mirrors SyncLog conventions; nullable TEXT
-// fields are *string.
+// StreamFetchLog is the single-row trickle state for the recent-window stream
+// backfill. The row is keyed by source='strava': this is a deliberately-retained
+// opaque internal key (M4 Decision #2), NOT a Strava dependency — M4 is
+// Garmin-only and the streams it tracks are all from Garmin. Mirrors SyncLog
+// conventions; nullable TEXT fields are *string.
 type StreamFetchLog struct {
 	Source           string
 	CursorTime       *string // oldest start_time reached in the recent window
@@ -174,8 +176,9 @@ type StreamFetchLog struct {
 	RateLimitedUntil *string // RFC3339 UTC; trickle resumes after this
 }
 
-// GetStreamFetchLog returns the single stream_fetch_log row (source='strava'),
-// or ErrNotFound if the seed is somehow absent.
+// GetStreamFetchLog returns the single stream_fetch_log row (keyed by the opaque
+// internal source='strava' key, M4 Decision #2), or ErrNotFound if the seed is
+// somehow absent.
 func (s *Store) GetStreamFetchLog() (StreamFetchLog, error) {
 	var fl StreamFetchLog
 	var cursor, lastRun, errMsg, rlUntil sql.NullString

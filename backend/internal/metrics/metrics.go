@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"help-my-run/backend/internal/store"
@@ -37,15 +38,27 @@ func FormatPace(secPerKm float64) string {
 	return fmt.Sprintf("%d:%02d/km", min, sec)
 }
 
-// runTypes are the Strava activity types counted as runs for volume/load.
+// runTypes is the canonical run vocabulary counted as runs for volume/load.
+// Garmin typeKeys are normalized to this set at the ingest boundary
+// (sync.canonicalActivityType): {Run, TrailRun, VirtualRun}.
 var runTypes = map[string]bool{
 	"Run":        true,
 	"TrailRun":   true,
 	"VirtualRun": true,
 }
 
-// IsRun reports whether a Strava activity type counts toward running volume.
-func IsRun(typ string) bool { return runTypes[typ] }
+// IsRun reports whether an activity type counts toward running volume. It accepts
+// the canonical run vocabulary (runTypes) AND, as defense-in-depth, any Garmin
+// run typeKey: every Garmin run subtype (running, trail_running,
+// treadmill_running, virtual_run, …) contains the substring "run", while non-run
+// types (cycling, lap_swimming, strength_training, hiking, walking, yoga, …) do
+// not. This guarantees an unforeseen/unnormalized value never silently zeros runs.
+func IsRun(typ string) bool {
+	if runTypes[typ] {
+		return true
+	}
+	return strings.Contains(strings.ToLower(typ), "run")
+}
 
 // Internal aliases so existing call sites in this package stay unchanged while
 // the exported names are reused by internal/progress (CONTRACTS §3.3).
