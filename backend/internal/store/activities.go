@@ -115,21 +115,6 @@ func (s *Store) ListActivities(limit int) ([]Activity, error) {
 	return out, rows.Err()
 }
 
-// LatestActivityStartTime returns the max start_time across all activities (ISO
-// string), or ErrNotFound when there are no activities. Used as the Garmin
-// incremental cursor.
-func (s *Store) LatestActivityStartTime() (string, error) {
-	var t sql.NullString
-	err := s.DB.QueryRow(`SELECT MAX(start_time) FROM activities`).Scan(&t)
-	if err != nil {
-		return "", err
-	}
-	if !t.Valid {
-		return "", ErrNotFound
-	}
-	return t.String, nil
-}
-
 // UpsertSplits upserts all splits for an activity (by activity_id+idx PK).
 func (s *Store) UpsertSplits(activityID int64, splits []Split) error {
 	tx, err := s.DB.Begin()

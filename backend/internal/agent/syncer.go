@@ -5,7 +5,6 @@ import (
 
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 	syncpkg "help-my-run/backend/internal/sync"
 )
 
@@ -13,18 +12,17 @@ import (
 // seam used by the Agent.
 type RealSyncer struct {
 	store    *store.Store
-	strava   *strava.Client
 	runner   garmin.Runner
 	extraEnv []string
 }
 
 // NewRealSyncer constructs the production Syncer.
-func NewRealSyncer(s *store.Store, sc *strava.Client, r garmin.Runner, extraEnv []string) *RealSyncer {
-	return &RealSyncer{store: s, strava: sc, runner: r, extraEnv: extraEnv}
+func NewRealSyncer(s *store.Store, r garmin.Runner, extraEnv []string) *RealSyncer {
+	return &RealSyncer{store: s, runner: r, extraEnv: extraEnv}
 }
 
-// SyncAll runs both syncs with the bound deps. No stream trickle in the daily
-// agent loop (recent-window stream backfill rides the server's periodic sync).
+// SyncAll runs the Garmin sync with the bound deps. No stream trickle in the
+// daily agent loop (recent-window stream backfill rides the server's periodic sync).
 func (r *RealSyncer) SyncAll(ctx context.Context) syncpkg.AllResult {
-	return syncpkg.SyncAll(ctx, r.store, r.strava, r.runner, r.extraEnv, nil)
+	return syncpkg.SyncAll(ctx, r.store, r.runner, r.extraEnv, nil)
 }

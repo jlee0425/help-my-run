@@ -7,7 +7,6 @@ import (
 
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/store"
-	"help-my-run/backend/internal/strava"
 )
 
 func TestRealSyncerCallsSyncAll(t *testing.T) {
@@ -20,12 +19,11 @@ func TestRealSyncerCallsSyncAll(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	// No strava tokens seeded -> SyncStrava errors (status "error"), proving the
-	// adapter ran SyncAll end-to-end with the bound deps.
-	rs := NewRealSyncer(s, strava.NewWithBase("id", "sec", "http://localhost/cb", "http://localhost"),
-		garmin.Runner{Python: "/bin/cat", Script: "/dev/null"}, nil)
+	// A worker that produces no valid JSON -> SyncGarmin errors (status "error"),
+	// proving the adapter ran SyncAll end-to-end with the bound deps.
+	rs := NewRealSyncer(s, garmin.Runner{Python: "/bin/cat", Script: "/dev/null"}, nil)
 	res := rs.SyncAll(context.Background())
-	if res.Strava.Status != "error" {
-		t.Errorf("strava status = %q, want error (no tokens)", res.Strava.Status)
+	if res.Garmin.Status != "error" {
+		t.Errorf("garmin status = %q, want error (worker produced no output)", res.Garmin.Status)
 	}
 }
