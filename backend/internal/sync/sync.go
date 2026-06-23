@@ -13,10 +13,16 @@ import (
 )
 
 // SourceResult is the per-source sync outcome (matches the /api/sync contract).
+// "skipped" is set by callers (not by SyncGarmin/SyncAll) when the sync was not
+// attempted — e.g. the Garmin token store does not yet exist, so contacting
+// Garmin would only add to its per-IP login rate limit. A "skipped" result does
+// NOT write sync_log (a prior ok/error row is preserved) and is not "ok", so the
+// stream-trickle gate and the status() connected=(Status=="ok") derivation both
+// correctly treat it as not-connected.
 type SourceResult struct {
-	Status string  // "ok" | "error"
+	Status string  // "ok" | "error" | "skipped"
 	Synced int     // rows upserted
-	Error  *string // non-nil when Status=="error"
+	Error  *string // non-nil when Status=="error" (or a note when "skipped")
 }
 
 func nowUTC() string { return time.Now().UTC().Format(time.RFC3339) }
