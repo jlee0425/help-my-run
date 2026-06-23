@@ -46,8 +46,9 @@ func (r Runner) RunGarminFetch(ctx context.Context, since string, extraEnv []str
 
 // RunGarminFetchFIT runs `<python> <script> stream --activity-id <garminID>
 // --echo-id <echoID>`, parsing the §2.6 stdout JSON. garminActivityID is the
-// Garmin download id; echoActivityID is the Strava id echoed back as
-// out.ActivityID so the store row keys correctly (§7 id mapping).
+// Garmin download id; echoActivityID is the activity id (identity: equals
+// garminActivityID) echoed back as out.ActivityID so the store row keys
+// correctly.
 func (r Runner) RunGarminFetchFIT(ctx context.Context, garminActivityID, echoActivityID int64, extraEnv []string) (*FITStreamOutput, error) {
 	cmd := exec.CommandContext(ctx, r.Python, r.Script, "stream",
 		"--activity-id", strconv.FormatInt(garminActivityID, 10),

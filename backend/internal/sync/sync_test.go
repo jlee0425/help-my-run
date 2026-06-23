@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -139,7 +140,7 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 
 	counts := map[string]int{
 		"garmin_sleep": 0, "garmin_hrv": 0, "garmin_body_battery": 0, "garmin_rhr": 0,
-		"garmin_vo2max": 0, "garmin_activities": 0,
+		"garmin_vo2max": 0, "activities": 0,
 	}
 	for tbl := range counts {
 		var n int
@@ -150,7 +151,7 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 	}
 	if counts["garmin_sleep"] != 2 || counts["garmin_hrv"] != 1 ||
 		counts["garmin_body_battery"] != 2 || counts["garmin_rhr"] != 2 ||
-		counts["garmin_vo2max"] != 2 || counts["garmin_activities"] != 2 {
+		counts["garmin_vo2max"] != 2 || counts["activities"] != 2 {
 		t.Errorf("counts = %+v, want sleep2 hrv1 bb2 rhr2 vo2max2 activities2", counts)
 	}
 
@@ -161,13 +162,27 @@ func TestSyncGarminUpsertsAllTables(t *testing.T) {
 		t.Errorf("sleep raw_json = %q, want it to contain dailySleepDTO", raw)
 	}
 
-	// Activity ingested with run-type + start_time persisted.
-	var atype, ast string
+	// Activity ingested into the canonical activities table, re-keyed by Garmin id.
+	var atype, ast, aname string
+	var avgHR sql.NullFloat64
+	var avgCad sql.NullFloat64
+	var movS, elapS int64
 	_ = s.DB.QueryRow(
-		`SELECT activity_type, start_time FROM garmin_activities WHERE garmin_activity_id=?`,
-		14820001234).Scan(&atype, &ast)
-	if atype != "running" || ast != "2026-06-14 05:00:00" {
-		t.Errorf("garmin_activity 14820001234 = (%q,%q), want (running, 2026-06-14 05:00:00)", atype, ast)
+		`SELECT type, start_time, name, avg_hr, avg_cadence, moving_time_s, elapsed_time_s
+		   FROM activities WHERE activity_id=?`,
+		14820001234).Scan(&atype, &ast, &aname, &avgHR, &avgCad, &movS, &elapS)
+	if atype != "running" || ast != "2026-06-14T05:00:00Z" || aname != "Morning Run" {
+		t.Errorf("activity 14820001234 = (%q,%q,%q), want (running, 2026-06-14T05:00:00Z, Morning Run)", atype, ast, aname)
+	}
+	if !avgHR.Valid || avgHR.Float64 != 148 {
+		t.Errorf("avg_hr = %v, want 148", avgHR)
+	}
+	if !avgCad.Valid || avgCad.Float64 != 172 {
+		t.Errorf("avg_cadence = %v, want 172", avgCad)
+	}
+	// float worker durations rounded into the INTEGER columns.
+	if movS != 3200 || elapS != 3300 {
+		t.Errorf("moving/elapsed = (%d,%d), want (3200,3300)", movS, elapS)
 	}
 
 	sl, _ := s.GetSyncLog("garmin")

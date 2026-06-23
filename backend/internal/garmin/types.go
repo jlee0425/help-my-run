@@ -17,13 +17,24 @@ type WorkerOutput struct {
 	Activities  []GarminActivity `json:"activities"` // M3.2.1
 }
 
-// GarminActivity is one element of the Garmin activities list (§2.x).
+// GarminActivity is one element of the Garmin activities list (§2.x), enriched
+// to the full canonical-activity record. DurationS is removed; MovingTimeS and
+// ElapsedTimeS carry the worker's float durations (rounded to int64 on upsert).
 type GarminActivity struct {
 	GarminActivityID int64           `json:"garmin_activity_id"`
+	Name             string          `json:"name"`
 	StartTime        string          `json:"start_time"`
-	DurationS        *float64        `json:"duration_s"`
-	DistanceM        *float64        `json:"distance_m"`
+	StartTimeLocal   *string         `json:"start_time_local"`
 	ActivityType     *string         `json:"activity_type"`
+	DistanceM        *float64        `json:"distance_m"`
+	MovingTimeS      *float64        `json:"moving_time_s"`
+	ElapsedTimeS     *float64        `json:"elapsed_time_s"`
+	AvgHR            *float64        `json:"avg_hr"`
+	MaxHR            *float64        `json:"max_hr"`
+	AvgSpeed         *float64        `json:"avg_speed"`
+	MaxSpeed         *float64        `json:"max_speed"`
+	AvgCadence       *float64        `json:"avg_cadence"`
+	ElevationGainM   *float64        `json:"elevation_gain_m"`
 	RawJSON          json.RawMessage `json:"raw_json"`
 }
 
@@ -73,7 +84,7 @@ type Vo2maxDay struct {
 
 // FITStreamOutput is the worker `stream` subcommand stdout JSON (§2.6).
 type FITStreamOutput struct {
-	ActivityID int64     `json:"activity_id"` // echoed Strava id (store PK)
+	ActivityID int64     `json:"activity_id"` // echoed activity id (store PK)
 	Source     string    `json:"source"`      // "garmin"
 	FetchedAt  string    `json:"fetched_at"`
 	Series     FITSeries `json:"series"`
