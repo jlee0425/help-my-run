@@ -121,7 +121,7 @@ func (a *Agent) RunDaily(ctx context.Context, localDate string) RunResult {
 	}
 
 	sr := a.syncer.SyncAll(ctx)
-	res.Stale = sr.Strava.Status != "ok" || sr.Garmin.Status != "ok"
+	res.Stale = sr.Garmin.Status != "ok"
 
 	rec, err := a.store.ListRecovery(60)
 	if err != nil {

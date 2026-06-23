@@ -76,7 +76,6 @@ func (f *fakePusher) Send(ctx context.Context, msg push.Message) error {
 
 func okSync() syncpkg.AllResult {
 	return syncpkg.AllResult{
-		Strava: syncpkg.SourceResult{Status: "ok"},
 		Garmin: syncpkg.SourceResult{Status: "ok"},
 	}
 }
@@ -226,7 +225,6 @@ func TestRunDailyStaleWhenSyncFails(t *testing.T) {
 		source: "ai",
 	}
 	bad := syncpkg.AllResult{
-		Strava: syncpkg.SourceResult{Status: "ok"},
 		Garmin: syncpkg.SourceResult{Status: "error"},
 	}
 	a := New(s, &fakeSyncer{res: bad}, adj, &fakePusher{}, fakeClock{now: time.Date(2026, 6, 19, 5, 30, 0, 0, time.UTC)}, time.UTC)
