@@ -153,10 +153,34 @@ export type Profile = {
 };
 
 export type ChatMessage = {
-  id: number;
   role: 'user' | 'assistant' | string;
   content: string;
   created_at: string;
+};
+
+export type ChatHistory = { messages: ChatMessage[] };
+
+export type CrossFitDay = {
+  date: string;
+  dow: string;
+  has_crossfit: boolean;
+  focus: string;
+  cns_load: string;
+  leg_load: string;
+  notes: string;
+};
+
+export type CrossFitWeek = { week_start: string; days: CrossFitDay[] };
+
+export type FitnessMetrics = {
+  weekly_volume_km: number;
+  four_week_avg_km: number;
+  acute_chronic_ratio: number;
+  easy_pace: string;
+  threshold_pace: string;
+  recovery_trend: string;
+  safe_weekly_target_km: number;
+  is_cutback_week: boolean;
 };
 
 export type AgentRunResult = {
