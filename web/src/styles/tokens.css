@@ -1,0 +1,50 @@
+/* Design tokens — extracted verbatim from the claude.ai/design project
+   "Garmin Running Coach PWA" (CoachApp / RunCoachPhone / CoachWeb / Onboarding).
+   These values are canonical; components must use the variables, not literals. */
+:root {
+  --bg: #07090c;
+  --bg-grad: linear-gradient(180deg, #0e1319 0%, #0a0d12 55%, #07090c 100%);
+
+  --surface: #12161c;
+  --surface-border: #212833;
+  --subtle: #0f1319;
+  --subtle-border: #1c232d;
+  --inset: #0b0e13;
+  --inset-border: #232a34;
+  --hairline: #171d25;
+
+  --text: #e7ecf0;
+  --text-2: #c4cdd6;
+  --muted: #8a96a3;
+  --label: #566270;
+  --faint: #4b5560;
+
+  --green: #5fd08b;
+  --green-hover: #86e5a6;
+  --on-green: #06210f;
+  --green-tint: rgba(95, 208, 139, 0.07);
+  --green-tint-2: rgba(95, 208, 139, 0.12);
+  --green-border: rgba(95, 208, 139, 0.3);
+
+  --amber: #e8b24c;
+  --amber-tint: rgba(232, 178, 76, 0.1);
+  --amber-border: rgba(232, 178, 76, 0.28);
+  --red: #e8685c;
+  --red-tint: rgba(232, 104, 92, 0.1);
+  --red-border: rgba(232, 104, 92, 0.3);
+
+  --z1: #2f6f52;
+  --z2: #5fd08b;
+  --z3: #e8b24c;
+  --z4: #e8935c;
+  --z5: #e8685c;
+  --cf-bar: #3a4657;
+
+  --font-ui: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --r-card: 18px;
+  --r-tile: 13px;
+  --r-btn: 12px;
+  --r-pill: 20px;
+}
