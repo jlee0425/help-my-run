@@ -9,10 +9,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"help-my-run/backend/internal/agent"
+	"help-my-run/backend/internal/auth"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
 	"help-my-run/backend/internal/progress"
-	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/streams"
@@ -37,11 +37,6 @@ type Coach interface {
 // the force-capable RunDaily is wired — see Task 26).
 type Agent interface {
 	RunDaily(ctx context.Context, localDate string, force bool) agent.RunResult
-}
-
-// Pusher is the M2 push transport seam. *push.Client satisfies it structurally.
-type Pusher interface {
-	Send(ctx context.Context, msg push.Message) error
 }
 
 // Progress is the M3.1 progress-engine seam, injected from main.go (avoids an
@@ -75,12 +70,11 @@ type Chat interface {
 // Deps are the handler dependencies injected by main.go (and tests).
 type Deps struct {
 	Store    *store.Store
-	APIToken string
+	Auth     *auth.Service // M5: owner sessions + API token
 	SyncFunc SyncFunc
 	Coach    Coach    // M1
 	ImageDir string   // M1: where uploaded CrossFit images are saved
 	Agent    Agent    // M2: daily loop (POST /api/agent/run)
-	Pusher   Pusher   // M2: push transport
 	Progress Progress // M3.1: progress engine (GET /api/progress, POST /api/progress/analyze)
 	Streams  Streams  // M3.2: streams engine (GET .../analysis, POST .../stream/fetch)
 	Chat     Chat     // M3.3: chat engine (POST /api/chat); GET/DELETE use Store directly
@@ -98,10 +92,16 @@ func NewRouter(d Deps) http.Handler {
 
 	// Public (no auth).
 	r.Get("/health", h.health)
+	r.Get("/api/auth/state", h.authState)
+	r.Post("/api/setup", h.setup)
+	r.Post("/api/login", h.login)
 
-	// Protected.
+	// Protected (session cookie OR bearer API token).
 	r.Group(func(r chi.Router) {
-		r.Use(BearerAuth(d.APIToken))
+		r.Use(RequireAuth(d.Auth))
+		r.Post("/api/logout", h.logout)
+		r.Post("/api/auth/password", h.changePassword)
+		r.Post("/api/auth/token", h.regenerateToken)
 		r.Get("/api/status", h.status)
 		r.Post("/api/sync", h.sync)
 		r.Get("/api/activities", h.activities)
@@ -116,7 +116,6 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/fitness", h.fitness)
 
 		// M2
-		r.Post("/api/push/register", h.pushRegister)
 		r.Get("/api/today", h.today)
 		r.Post("/api/today/undo", h.undoToday)
 		r.Post("/api/agent/run", h.agentRun)

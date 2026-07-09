@@ -25,14 +25,13 @@ func newProgressServer(t *testing.T, fp *fakeProgress) http.Handler {
 	}
 	deps := Deps{
 		Store:    s,
-		APIToken: testToken,
+		Auth:     testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 0, nil
 		},
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),
 		Agent:    &fakeAgent{},
-		Pusher:   &fakePusher{},
 		Progress: fp,
 		Streams:  &fakeStreams{},
 		Chat:     &fakeChat{},

@@ -13,7 +13,6 @@ import (
 
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
-	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	syncpkg "help-my-run/backend/internal/sync"
@@ -30,9 +29,18 @@ type Adjuster interface {
 	Fitness(ctx context.Context) (metrics.FitnessMetrics, error)
 }
 
-// Pusher is the push seam (*push.Client satisfies it).
+// Pusher is the notification seam. M5: transport-agnostic (title/body + the
+// in-app URL a tap should open); *webpush.Service satisfies it.
 type Pusher interface {
-	Send(ctx context.Context, msg push.Message) error
+	Send(ctx context.Context, title, body, url string) error
+}
+
+// SenderFunc adapts a plain function to the Pusher seam (main wiring, tests).
+type SenderFunc func(ctx context.Context, title, body, url string) error
+
+// Send implements Pusher.
+func (f SenderFunc) Send(ctx context.Context, title, body, url string) error {
+	return f(ctx, title, body, url)
 }
 
 // Clock is the agent's injectable time source (RFC3339 stamps in tests).
@@ -210,39 +218,19 @@ func marshalDriversWithReasons(rd readiness.Readiness, stale bool) string {
 	return string(out)
 }
 
-// pushBriefing sends to every registered device token; returns true if >=1 ok.
-// A DeviceNotRegistered token is deleted. Returns false (not fatal) on errors.
+// pushBriefing delivers the morning briefing through the Pusher seam; returns
+// true when delivery succeeded. Failures are logged, never fatal.
 func (a *Agent) pushBriefing(ctx context.Context, localDate string, color readiness.Color, dec llm.DailyDecisionParsed) bool {
-	tokens, err := a.store.ListDeviceTokens()
-	if err != nil || len(tokens) == 0 {
-		return false
-	}
 	body := dec.Rationale
 	if body == "" {
 		body = restRationale(color)
 	}
-	title := fmt.Sprintf("%s — %s", localDate, string(color))
-	delivered := false
-	for _, tk := range tokens {
-		msg := push.Message{
-			To:        tk.ExpoPushToken,
-			Title:     title,
-			Body:      body,
-			Data:      map[string]interface{}{"date": localDate, "action": string(dec.Action)},
-			Sound:     "default",
-			Priority:  "high",
-			ChannelID: "default",
-		}
-		if serr := a.pusher.Send(ctx, msg); serr != nil {
-			if errors.Is(serr, push.ErrDeviceNotRegistered) {
-				_ = a.store.DeleteDeviceToken(tk.ExpoPushToken)
-			}
-			log.Printf("agent: push to %s failed: %v", tk.ExpoPushToken, serr)
-			continue
-		}
-		delivered = true
+	title := fmt.Sprintf("Today: %s — %s", string(dec.Action), string(color))
+	if err := a.pusher.Send(ctx, title, body, "/"); err != nil {
+		log.Printf("agent: push briefing for %s failed: %v", localDate, err)
+		return false
 	}
-	return delivered
+	return true
 }
 
 // recordErr stores an error agent_run and returns res with the error set.

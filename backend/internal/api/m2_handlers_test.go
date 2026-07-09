@@ -73,50 +73,9 @@ func TestProfilePutRejectsBadTimezone(t *testing.T) {
 	}
 }
 
-func TestPushRegisterStoresToken(t *testing.T) {
-	h, s := newTestServer(t)
-	body := `{"expo_push_token":"ExponentPushToken[abc]","platform":"ios"}`
-	rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (body=%s)", rec.Code, rec.Body.String())
-	}
-	var out pushRegisterResponseDTO
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if out.ExpoPushToken != "ExponentPushToken[abc]" || out.Platform != "ios" || out.UpdatedAt == "" {
-		t.Errorf("resp = %+v", out)
-	}
-	toks, _ := s.ListDeviceTokens()
-	if len(toks) != 1 || toks[0].ExpoPushToken != "ExponentPushToken[abc]" {
-		t.Errorf("stored tokens = %+v, want one", toks)
-	}
-}
 
-func TestPushRegisterRejectsEmptyToken(t *testing.T) {
-	h, _ := newTestServer(t)
-	body := `{"expo_push_token":"","platform":"ios"}`
-	rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
-	}
-}
 
-func TestPushRegisterRejectsBadPlatform(t *testing.T) {
-	h, _ := newTestServer(t)
-	body := `{"expo_push_token":"ExponentPushToken[x]","platform":"windows"}`
-	rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400 (body=%s)", rec.Code, rec.Body.String())
-	}
-}
 
-func TestPushRegisterRequiresAuth(t *testing.T) {
-	h, _ := newTestServer(t)
-	body := `{"expo_push_token":"ExponentPushToken[x]","platform":"ios"}`
-	rec := doBody(t, h, http.MethodPost, "/api/push/register", "", body)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", rec.Code)
-	}
-}
 
 func seedDecision(t *testing.T, s *store.Store, date string) {
 	t.Helper()
@@ -229,11 +188,11 @@ func TestAgentRunInvokesAgentAndReturnsResult(t *testing.T) {
 		Action: "SOFTEN", Source: "ai", Stale: false, Pushed: true,
 	}}
 	h2 := NewRouter(Deps{
-		Store: s, APIToken: testToken,
+		Store: s, Auth:     testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 0, nil
 		},
-		Coach: &fakeCoach{}, ImageDir: t.TempDir(), Agent: fa, Pusher: &fakePusher{},
+		Coach: &fakeCoach{}, ImageDir: t.TempDir(), Agent: fa,
 	})
 	rec := doBody(t, h2, http.MethodPost, "/api/agent/run?date=2026-06-20&force=true", testToken, "")
 	if rec.Code != http.StatusOK {
@@ -267,21 +226,3 @@ func TestTodayRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestRegisteredTokenIsDroppable(t *testing.T) {
-	h, s := newTestServer(t)
-	body := `{"expo_push_token":"ExponentPushToken[drop]","platform":"android"}`
-	if rec := doBody(t, h, http.MethodPost, "/api/push/register", testToken, body); rec.Code != http.StatusOK {
-		t.Fatalf("register status = %d", rec.Code)
-	}
-	toks, _ := s.ListDeviceTokens()
-	if len(toks) != 1 {
-		t.Fatalf("tokens after register = %d, want 1", len(toks))
-	}
-	if err := s.DeleteDeviceToken("ExponentPushToken[drop]"); err != nil {
-		t.Fatalf("DeleteDeviceToken: %v", err)
-	}
-	toks, _ = s.ListDeviceTokens()
-	if len(toks) != 0 {
-		t.Errorf("tokens after drop = %d, want 0", len(toks))
-	}
-}

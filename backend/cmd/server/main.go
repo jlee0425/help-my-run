@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,13 +17,13 @@ import (
 
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/api"
+	"help-my-run/backend/internal/auth"
 	"help-my-run/backend/internal/chat"
 	"help-my-run/backend/internal/coach"
 	"help-my-run/backend/internal/config"
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/progress"
-	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/scheduler"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/streams"
@@ -38,9 +39,9 @@ type App struct {
 	Handler  http.Handler
 	Runner   garmin.Runner
 	Cfg      *config.Config
+	Auth     *auth.Service    // M5: owner sessions + API token
 	Coach    *coach.Coach     // M2: shared coach engine (also drives the agent)
 	Agent    *agent.Agent     // M2: daily readiness/adjust loop
-	Pusher   *push.Client     // M2: Expo push transport
 	Progress *progress.Engine // M3.1: deterministic trends + claude -p read
 	Streams  *streams.Engine  // M3.2: per-run stream fetch + time-in-zone/decoupling
 	Chat     *chat.Engine     // M3.3: curated-pack chat-with-your-data engine
@@ -78,24 +79,26 @@ func Wire(cfg *config.Config) (*App, error) {
 	progressEngine := progress.New(s, llmClient, cfg.ClaudeModel)
 	chatEngine := chat.New(s, llmClient, progressEngine, cfg.ClaudeModel, cfg.ChatHistoryTurns)
 
-	pushClient := push.NewClient(cfg.ExpoPushBaseURL)
+	authService := auth.New(s)
+
+	// M5 transitional: notifications are re-wired to Web Push in Task 18; the
+	// agent's briefing seam is a no-op sender until then.
 	dailyAgent := agent.New(
 		s,
 		agent.NewRealSyncer(s, runner, extraEnv),
 		coachEngine,
-		pushClient,
+		agent.SenderFunc(func(ctx context.Context, title, body, url string) error { return nil }),
 		agentClock{},
 		nil, // loc resolved in main() from profile; agent default UTC is fine for Wire
 	)
 
 	handler := api.NewRouter(api.Deps{
 		Store:    s,
-		APIToken: cfg.APIToken,
+		Auth:     authService,
 		SyncFunc: syncFunc,
 		Coach:    coachEngine,
 		ImageDir: cfg.ImageDir,
 		Agent:    apiAgent{a: dailyAgent, store: s},
-		Pusher:   pushClient,
 		Progress: progressEngine,
 		Streams:  streamsEngine,
 		Chat:     chatEngine,
@@ -106,9 +109,9 @@ func Wire(cfg *config.Config) (*App, error) {
 		Handler:  handler,
 		Runner:   runner,
 		Cfg:      cfg,
+		Auth:     authService,
 		Coach:    coachEngine,
 		Agent:    dailyAgent,
-		Pusher:   pushClient,
 		Progress: progressEngine,
 		Streams:  streamsEngine,
 		Chat:     chatEngine,
@@ -138,11 +141,10 @@ func streamTrickle(cfg *config.Config, e *streams.Engine) *syncpkg.StreamTrickle
 	}
 }
 
-// garminEnv builds the env passed through to the worker subprocess.
+// garminEnv builds the env passed through to the worker subprocess. Fetch and
+// stream resume from the tokenstore; credentials never ride the environment.
 func garminEnv(cfg *config.Config) []string {
 	return []string{
-		"GARMIN_EMAIL=" + cfg.GarminEmail,
-		"GARMIN_PASSWORD=" + cfg.GarminPassword,
 		"GARMIN_TOKENSTORE=" + cfg.GarminTokenstore,
 	}
 }
@@ -196,6 +198,10 @@ func runSyncOnBoot(ctx context.Context, fn func(context.Context)) {
 }
 
 func main() {
+	resetPassword := flag.Bool("reset-password", false,
+		"clear the owner password, API token, and all sessions, then exit (setup runs again on next visit)")
+	flag.Parse()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
@@ -206,6 +212,14 @@ func main() {
 		log.Fatalf("wire: %v", err)
 	}
 	defer func() { _ = app.Store.Close() }()
+
+	if *resetPassword {
+		if err := app.Auth.ResetPassword(); err != nil {
+			log.Fatalf("reset-password: %v", err)
+		}
+		log.Printf("owner password, API token, and sessions cleared — open the web UI to run setup again")
+		return
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

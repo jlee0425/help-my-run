@@ -32,9 +32,9 @@ func TestNextFire(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := nextFire(tc.from, cfg)
+			got := Next(tc.from, cfg)
 			if !got.Equal(tc.want) {
-				t.Errorf("nextFire(%v) = %v, want %v", tc.from, got, tc.want)
+				t.Errorf("Next(%v) = %v, want %v", tc.from, got, tc.want)
 			}
 		})
 	}
@@ -47,7 +47,7 @@ func TestNextFirePreservesWallClockAcrossDST(t *testing.T) {
 	}
 	cfg := Config{Hour: 5, Minute: 30, Loc: loc}
 	from := time.Date(2026, 3, 7, 6, 0, 0, 0, loc)
-	got := nextFire(from, cfg)
+	got := Next(from, cfg)
 	if got.Hour() != 5 || got.Minute() != 30 || got.Day() != 8 {
 		t.Errorf("nextFire across DST = %v, want 2026-03-08 05:30 local", got)
 	}

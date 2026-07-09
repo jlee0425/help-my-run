@@ -3,16 +3,32 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"help-my-run/backend/internal/auth"
 	"help-my-run/backend/internal/store"
 )
 
 const testToken = "test-token"
+
+// testAuth builds an auth.Service on s, completes setup, and pins the API
+// token hash to testToken so existing bearer-header test helpers keep working.
+func testAuth(t *testing.T, s *store.Store) *auth.Service {
+	t.Helper()
+	a := auth.New(s)
+	if _, _, err := a.Setup("test-password-123"); err != nil && !errors.Is(err, auth.ErrAlreadySetup) {
+		t.Fatalf("auth setup: %v", err)
+	}
+	if err := s.SetSetting(store.SettingAPITokenHash, auth.HashSecret(testToken)); err != nil {
+		t.Fatalf("pin api token: %v", err)
+	}
+	return a
+}
 
 func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 	t.Helper()
@@ -25,15 +41,14 @@ func newTestServer(t *testing.T) (http.Handler, *store.Store) {
 		t.Fatalf("Migrate: %v", err)
 	}
 	deps := Deps{
-		Store:    s,
-		APIToken: testToken,
+		Store: s,
+		Auth:  testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 0, nil
 		},
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),
 		Agent:    &fakeAgent{},
-		Pusher:   &fakePusher{},
 		Progress: &fakeProgress{},
 		Streams:  &fakeStreams{},
 		Chat:     &fakeChat{},
@@ -213,8 +228,8 @@ func TestSyncHandler(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	deps := Deps{
-		Store:    s,
-		APIToken: testToken,
+		Store: s,
+		Auth:  testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 3, nil
 		},

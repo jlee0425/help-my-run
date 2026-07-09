@@ -32,10 +32,11 @@ type Config struct {
 	Loc          *time.Location
 }
 
-// nextFire returns the next instant strictly after `from` at cfg.Hour:cfg.Minute
+// Next returns the next instant strictly after `from` at cfg.Hour:cfg.Minute
 // in cfg.Loc. If today's time already passed (or equals from), returns tomorrow's.
 // AddDate preserves the wall clock across DST.
-func nextFire(from time.Time, cfg Config) time.Time {
+// Next is exported for the status endpoint (agent_next_run).
+func Next(from time.Time, cfg Config) time.Time {
 	now := from.In(cfg.Loc)
 	next := time.Date(now.Year(), now.Month(), now.Day(), cfg.Hour, cfg.Minute, 0, 0, cfg.Loc)
 	if !next.After(now) {
@@ -75,7 +76,7 @@ func Run(ctx context.Context, clk Clock, next ConfigProvider, fn func(ctx contex
 			}
 		}
 
-		fireAt := nextFire(clk.Now(), cfg)
+		fireAt := Next(clk.Now(), cfg)
 		d := fireAt.Sub(clk.Now())
 		if d < 0 {
 			d = 0

@@ -30,8 +30,16 @@ type statusCounts struct {
 	RecoveryDays int `json:"recovery_days"`
 }
 type statusResp struct {
-	Garmin sourceStatus `json:"garmin"`
-	Counts statusCounts `json:"counts"`
+	Garmin       sourceStatus `json:"garmin"`
+	Counts       statusCounts `json:"counts"`
+	AgentNextRun *string      `json:"agent_next_run"` // RFC3339 next daily-agent fire, nil when disabled
+	AgentEnabled bool         `json:"agent_enabled"`
+}
+
+// --- M5 /api/auth/state ---
+type authStateDTO struct {
+	SetupRequired bool `json:"setup_required"`
+	Authed        bool `json:"authed"`
 }
 
 // --- /api/sync ---
@@ -134,17 +142,6 @@ type planDayDTO struct {
 	TimeNote      string  `json:"time_note"`
 	OptionalIfCNS bool    `json:"optional_if_cns"`
 	Rationale     string  `json:"rationale"`
-}
-
-// --- M2 /api/push/register ---
-type pushRegisterRequestDTO struct {
-	ExpoPushToken string `json:"expo_push_token"`
-	Platform      string `json:"platform"` // "ios"|"android"
-}
-type pushRegisterResponseDTO struct {
-	ExpoPushToken string `json:"expo_push_token"`
-	Platform      string `json:"platform"`
-	UpdatedAt     string `json:"updated_at"`
 }
 
 // --- M2 /api/today ---

@@ -10,13 +10,12 @@ import (
 // Config holds all runtime configuration. Field tags map to the env var names
 // defined in the M0 contracts (§4).
 type Config struct {
-	APIToken string `envconfig:"API_TOKEN" required:"true"`
-
+	// M5: API_TOKEN, GARMIN_EMAIL, and GARMIN_PASSWORD are gone from the
+	// environment — the owner password/API token live in the DB (web setup),
+	// and Garmin login happens in the web UI (creds pass over stdin, once).
 	DBPath string `envconfig:"DB_PATH" default:"./helpmyrun.db"`
 	Port   string `envconfig:"PORT" default:"8080"`
 
-	GarminEmail      string `envconfig:"GARMIN_EMAIL"`
-	GarminPassword   string `envconfig:"GARMIN_PASSWORD"`
 	GarminTokenstore string `envconfig:"GARMIN_TOKENSTORE" default:"~/.garminconnect"`
 
 	PythonBin    string `envconfig:"PYTHON_BIN" default:"garmin-worker/.venv/bin/python"`

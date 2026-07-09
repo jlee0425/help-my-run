@@ -84,8 +84,8 @@ func TestLoadExplicit(t *testing.T) {
 	if cfg.Port != "9090" {
 		t.Errorf("Port = %q, want %q", cfg.Port, "9090")
 	}
-	if cfg.GarminEmail != "you@example.com" {
-		t.Errorf("GarminEmail = %q, want %q", cfg.GarminEmail, "you@example.com")
+	if cfg.GarminTokenstore != "/tmp/gc" {
+		t.Errorf("GarminTokenstore = %q, want %q", cfg.GarminTokenstore, "/tmp/gc")
 	}
 	if cfg.PythonBin != "/usr/bin/python3" {
 		t.Errorf("PythonBin = %q, want %q", cfg.PythonBin, "/usr/bin/python3")
@@ -95,13 +95,14 @@ func TestLoadExplicit(t *testing.T) {
 	}
 }
 
-func TestLoadMissingRequired(t *testing.T) {
+func TestLoadNoRequiredEnv(t *testing.T) {
+	// M5: no env var is required anymore — credentials live in the DB/web UI.
 	env := requiredEnv()
 	delete(env, "API_TOKEN")
 	setEnv(t, env)
 
-	if _, err := Load(); err == nil {
-		t.Fatal("Load() error = nil, want error for missing API_TOKEN")
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load() error = %v, want nil (no required env in M5)", err)
 	}
 }
 

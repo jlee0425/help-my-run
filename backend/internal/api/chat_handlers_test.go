@@ -25,11 +25,10 @@ func newChatServer(t *testing.T, fc *fakeChat) (http.Handler, *store.Store) {
 	}
 	deps := Deps{
 		Store:    s,
-		APIToken: testToken,
+		Auth:     testAuth(t, s),
 		Coach:    &fakeCoach{},
 		ImageDir: t.TempDir(),
 		Agent:    &fakeAgent{},
-		Pusher:   &fakePusher{},
 		Progress: &fakeProgress{},
 		Streams:  &fakeStreams{},
 		Chat:     fc,

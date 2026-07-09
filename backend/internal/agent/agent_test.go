@@ -9,7 +9,6 @@ import (
 
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
-	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	syncpkg "help-my-run/backend/internal/sync"
@@ -64,13 +63,15 @@ func (f *fakeAdjuster) Fitness(ctx context.Context) (metrics.FitnessMetrics, err
 	return f.fit, nil
 }
 
+type sentMsg struct{ title, body, url string }
+
 type fakePusher struct {
-	msgs []push.Message
+	msgs []sentMsg
 	err  error
 }
 
-func (f *fakePusher) Send(ctx context.Context, msg push.Message) error {
-	f.msgs = append(f.msgs, msg)
+func (f *fakePusher) Send(ctx context.Context, title, body, url string) error {
+	f.msgs = append(f.msgs, sentMsg{title: title, body: body, url: url})
 	return f.err
 }
 
@@ -95,11 +96,6 @@ func seedPlanWithToday(t *testing.T, s *store.Store, weekStart, date string) {
 		PlanJSON: string(b), FitnessSummary: "x", Model: "m",
 	}); err != nil {
 		t.Fatalf("InsertPlan: %v", err)
-	}
-	if err := s.UpsertDeviceToken(store.DeviceToken{
-		ExpoPushToken: "ExponentPushToken[x]", Platform: "ios", UpdatedAt: "2026-06-19T00:00:00Z",
-	}); err != nil {
-		t.Fatalf("UpsertDeviceToken: %v", err)
 	}
 }
 
@@ -145,8 +141,14 @@ func TestRunDailyHappyPathPersistsAndPushes(t *testing.T) {
 	if run.Status != "ok" {
 		t.Errorf("agent_run status = %q, want ok", run.Status)
 	}
-	if len(pu.msgs) != 1 || pu.msgs[0].To != "ExponentPushToken[x]" {
-		t.Errorf("push msgs = %+v", pu.msgs)
+	if len(pu.msgs) != 1 {
+		t.Fatalf("push msgs = %+v, want 1", pu.msgs)
+	}
+	if pu.msgs[0].title != "Today: SOFTEN — amber" && pu.msgs[0].title != "Today: SOFTEN — green" && pu.msgs[0].title != "Today: SOFTEN — red" {
+		t.Errorf("push title = %q, want 'Today: SOFTEN — <color>'", pu.msgs[0].title)
+	}
+	if pu.msgs[0].body != "trimmed" || pu.msgs[0].url != "/" {
+		t.Errorf("push body/url = %q %q", pu.msgs[0].body, pu.msgs[0].url)
 	}
 }
 

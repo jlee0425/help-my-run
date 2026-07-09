@@ -8,12 +8,21 @@ import (
 	"testing"
 	"time"
 
+	"help-my-run/backend/internal/auth"
 	"help-my-run/backend/internal/config"
+	"help-my-run/backend/internal/store"
 )
+
+// pinToken makes "Bearer tok" valid against the wired auth service.
+func pinToken(t *testing.T, app *App) {
+	t.Helper()
+	if err := app.Store.SetSetting(store.SettingAPITokenHash, auth.HashSecret("tok")); err != nil {
+		t.Fatalf("pin token: %v", err)
+	}
+}
 
 func TestWireServesHealthAndAuth(t *testing.T) {
 	cfg := &config.Config{
-		APIToken:     "tok",
 		DBPath:       filepath.Join(t.TempDir(), "wire.db"),
 		Port:         "8080",
 		PythonBin:    "/bin/cat",
@@ -25,6 +34,7 @@ func TestWireServesHealthAndAuth(t *testing.T) {
 		t.Fatalf("Wire error = %v", err)
 	}
 	t.Cleanup(func() { _ = app.Store.Close() })
+	pinToken(t, app)
 
 	// /health: no auth, 200.
 	rec := httptest.NewRecorder()
@@ -52,7 +62,6 @@ func TestWireServesHealthAndAuth(t *testing.T) {
 
 func TestWireInjectsCoach(t *testing.T) {
 	cfg := &config.Config{
-		APIToken:     "tok",
 		DBPath:       filepath.Join(t.TempDir(), "coach-wire.db"),
 		Port:         "8080",
 		PythonBin:    "/bin/cat",
@@ -66,6 +75,7 @@ func TestWireInjectsCoach(t *testing.T) {
 		t.Fatalf("Wire error = %v", err)
 	}
 	t.Cleanup(func() { _ = app.Store.Close() })
+	pinToken(t, app)
 
 	// /api/fitness is bearer-protected and served by the injected coach -> 200
 	// (computes from an empty store, no claude needed).
@@ -81,7 +91,6 @@ func TestWireInjectsCoach(t *testing.T) {
 func testCfg(t *testing.T) *config.Config {
 	t.Helper()
 	return &config.Config{
-		APIToken:            "tok",
 		DBPath:              filepath.Join(t.TempDir(), "wire.db"),
 		Port:                "8080",
 		ClaudeBin:           "claude",
@@ -105,8 +114,8 @@ func TestWireBuildsM2Graph(t *testing.T) {
 	if app.Agent == nil {
 		t.Error("app.Agent = nil, want a wired *agent.Agent")
 	}
-	if app.Pusher == nil {
-		t.Error("app.Pusher = nil, want a wired *push.Client")
+	if app.Auth == nil {
+		t.Error("app.Auth = nil, want a wired *auth.Service")
 	}
 	if app.Handler == nil {
 		t.Error("app.Handler = nil")
@@ -119,6 +128,7 @@ func TestWireInjectsProgress(t *testing.T) {
 		t.Fatalf("Wire error = %v", err)
 	}
 	defer func() { _ = app.Store.Close() }()
+	pinToken(t, app)
 
 	if app.Progress == nil {
 		t.Error("app.Progress = nil, want a wired *progress.Engine")
@@ -141,6 +151,7 @@ func TestWireServesStreamAnalysisRoute(t *testing.T) {
 		t.Fatalf("Wire error = %v", err)
 	}
 	t.Cleanup(func() { _ = app.Store.Close() })
+	pinToken(t, app)
 
 	// GET /api/activities/{id}/analysis is bearer-protected and served by the
 	// injected streams engine. Not-fetched is 200 + has_stream:false (never 404),
@@ -167,6 +178,7 @@ func TestWiredHandlerServesToday404(t *testing.T) {
 		t.Fatalf("Wire error = %v", err)
 	}
 	defer func() { _ = app.Store.Close() }()
+	pinToken(t, app)
 
 	req := httptest.NewRequest("GET", "/api/today?date=2026-06-20", nil)
 	req.Header.Set("Authorization", "Bearer tok")

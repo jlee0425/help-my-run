@@ -59,18 +59,6 @@ func TestTodayResponseDTOTags(t *testing.T) {
 	}
 }
 
-func TestPushRegisterDTOTags(t *testing.T) {
-	req := pushRegisterRequestDTO{ExpoPushToken: "ExponentPushToken[x]", Platform: "ios"}
-	b, _ := json.Marshal(req)
-	if !contains(string(b), `"expo_push_token":"ExponentPushToken[x]"`) || !contains(string(b), `"platform":"ios"`) {
-		t.Errorf("pushRegisterRequestDTO JSON = %s", b)
-	}
-	resp := pushRegisterResponseDTO{ExpoPushToken: "ExponentPushToken[x]", Platform: "ios", UpdatedAt: "2026-06-20T05:30:01Z"}
-	rb, _ := json.Marshal(resp)
-	if !contains(string(rb), `"updated_at":"2026-06-20T05:30:01Z"`) {
-		t.Errorf("pushRegisterResponseDTO JSON = %s", rb)
-	}
-}
 
 func contains(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || indexOf(s, sub) >= 0)

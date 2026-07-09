@@ -6,7 +6,6 @@ import (
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/progress"
-	"help-my-run/backend/internal/push"
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/streams"
@@ -26,17 +25,6 @@ func (f *fakeAgent) RunDaily(ctx context.Context, localDate string, force bool) 
 		f.result.Date = localDate
 	}
 	return f.result
-}
-
-// fakePusher is the injected api.Pusher for handler tests.
-type fakePusher struct {
-	sent    []push.Message
-	sendErr error
-}
-
-func (f *fakePusher) Send(ctx context.Context, msg push.Message) error {
-	f.sent = append(f.sent, msg)
-	return f.sendErr
 }
 
 // fakeProgress is the injected api.Progress for handler tests.
@@ -114,7 +102,6 @@ func (f *fakeChat) Answer(ctx context.Context, message string) (store.ChatMessag
 var (
 	_ Coach    = (*fakeCoach)(nil)
 	_ Agent    = (*fakeAgent)(nil)
-	_ Pusher   = (*fakePusher)(nil)
 	_ Progress = (*fakeProgress)(nil)
 	_ Streams  = (*fakeStreams)(nil)
 	_ Chat     = (*fakeChat)(nil)

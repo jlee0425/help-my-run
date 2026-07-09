@@ -3,6 +3,10 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
+
+	"help-my-run/backend/internal/scheduler"
 )
 
 type handlers struct {
@@ -29,6 +33,8 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 	// connected:false; a successful sync -> "ok" -> connected:true.
 	garminConn := garminLog.Status == "ok"
 
+	nextRun, agentEnabled := h.agentSchedule()
+
 	resp := statusResp{
 		Garmin: sourceStatus{
 			Connected:    garminConn,
@@ -37,9 +43,44 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 			Status:       garminLog.Status,
 			Error:        garminLog.Error,
 		},
-		Counts: statusCounts{Activities: activitiesCount, RecoveryDays: recoveryDays},
+		Counts:       statusCounts{Activities: activitiesCount, RecoveryDays: recoveryDays},
+		AgentNextRun: nextRun,
+		AgentEnabled: agentEnabled,
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// agentSchedule computes the next daily-agent fire from the live profile
+// (mirrors the scheduler's ConfigProvider fallbacks: 05:30 UTC, enabled).
+// Returns (nil, false) only when the agent is disabled in the profile.
+func (h *handlers) agentSchedule() (*string, bool) {
+	runTime, tz, enabled := "05:30", "UTC", true
+	if prof, err := h.d.Store.GetAthleteProfile(); err == nil {
+		if prof.DailyRunTime != "" {
+			runTime = prof.DailyRunTime
+		}
+		if prof.Timezone != "" {
+			tz = prof.Timezone
+		}
+		enabled = prof.AgentEnabled
+	}
+	if !enabled {
+		return nil, false
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.UTC
+	}
+	hh, mm := 5, 30
+	if parts := strings.SplitN(runTime, ":", 2); len(parts) == 2 {
+		h1, herr := strconv.Atoi(parts[0])
+		m1, merr := strconv.Atoi(parts[1])
+		if herr == nil && merr == nil && h1 >= 0 && h1 < 24 && m1 >= 0 && m1 < 60 {
+			hh, mm = h1, m1
+		}
+	}
+	next := scheduler.Next(time.Now(), scheduler.Config{Hour: hh, Minute: mm, Loc: loc}).Format(time.RFC3339)
+	return &next, true
 }
 
 func (h *handlers) sync(w http.ResponseWriter, r *http.Request) {
