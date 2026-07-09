@@ -63,6 +63,9 @@ func (h *handlers) updateProfile(w http.ResponseWriter, r *http.Request) {
 		DailyRunTime:       in.DailyRunTime,
 		Timezone:           in.Timezone,
 		AgentEnabled:       in.AgentEnabled,
+		GoalsJSON:          in.GoalsJSON,
+		WeekJSON:           in.WeekJSON,
+		GuardrailsJSON:     in.GuardrailsJSON,
 	}); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -87,6 +90,9 @@ func toProfileDTO(p store.AthleteProfile) profileDTO {
 		DailyRunTime:       p.DailyRunTime,
 		Timezone:           p.Timezone,
 		AgentEnabled:       p.AgentEnabled,
+		GoalsJSON:          p.GoalsJSON,
+		WeekJSON:           p.WeekJSON,
+		GuardrailsJSON:     p.GuardrailsJSON,
 		UpdatedAt:          p.UpdatedAt,
 	}
 }

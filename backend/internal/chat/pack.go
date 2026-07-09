@@ -66,6 +66,18 @@ type ProfilePack struct {
 	MaxHRBpm        *int64          `json:"max_hr_bpm"`
 	RunConstraints  json.RawMessage `json:"run_constraints"` // {} if empty/invalid
 	GoalText        string          `json:"goal_text"`
+	Goals           json.RawMessage `json:"goals"`      // M5
+	Week            json.RawMessage `json:"week"`       // M5
+	Guardrails      json.RawMessage `json:"guardrails"` // M5
+}
+
+// rawJSONOr returns s as raw JSON, or fallback when s is empty/invalid.
+func rawJSONOr(s, fallback string) json.RawMessage {
+	raw := json.RawMessage(s)
+	if len(raw) == 0 || !json.Valid(raw) {
+		return json.RawMessage(fallback)
+	}
+	return raw
 }
 
 // ActivityPack is one recent run summarized (no raw_json).
@@ -151,6 +163,9 @@ func (e *Engine) buildContextPack(ctx context.Context) (ChatContextPack, error) 
 			MaxHRBpm:        prof.MaxHRBpm,
 			RunConstraints:  rc,
 			GoalText:        prof.GoalText,
+			Goals:           rawJSONOr(prof.GoalsJSON, `[]`),
+			Week:            rawJSONOr(prof.WeekJSON, `{}`),
+			Guardrails:      rawJSONOr(prof.GuardrailsJSON, `{}`),
 		},
 		Signals:       rep.Signals,
 		Activities:    activityPacks(acts),

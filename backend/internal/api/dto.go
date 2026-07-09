@@ -116,9 +116,12 @@ type profileDTO struct {
 	MaxHRBpm           *int64  `json:"max_hr_bpm"`
 	RunConstraintsJSON string  `json:"run_constraints_json"`
 	GoalText           string  `json:"goal_text"`
-	DailyRunTime       string  `json:"daily_run_time"` // "HH:MM" 24h local (M2)
-	Timezone           string  `json:"timezone"`       // IANA (M2)
-	AgentEnabled       bool    `json:"agent_enabled"`  // M2 daily agent on/off
+	DailyRunTime       string  `json:"daily_run_time"`  // "HH:MM" 24h local (M2)
+	Timezone           string  `json:"timezone"`        // IANA (M2)
+	AgentEnabled       bool    `json:"agent_enabled"`   // M2 daily agent on/off
+	GoalsJSON          string  `json:"goals_json"`      // M5: JSON array as string
+	WeekJSON           string  `json:"week_json"`       // M5
+	GuardrailsJSON     string  `json:"guardrails_json"` // M5
 	UpdatedAt          string  `json:"updated_at,omitempty"`
 }
 

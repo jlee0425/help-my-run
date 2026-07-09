@@ -36,6 +36,18 @@ type ProfilePack struct {
 	MaxHRBpm        *int64          `json:"max_hr_bpm"`
 	RunConstraints  json.RawMessage `json:"run_constraints"`
 	GoalText        string          `json:"goal_text"`
+	Goals           json.RawMessage `json:"goals"`      // M5: ["crossfit","fitness",...]
+	Week            json.RawMessage `json:"week"`       // M5: {"runs_per_week":..,"crossfit_days":..,"rest_day":".."}
+	Guardrails      json.RawMessage `json:"guardrails"` // M5: five coach guardrail booleans
+}
+
+// rawJSONOr returns s as raw JSON, or fallback when s is empty/invalid.
+func rawJSONOr(s, fallback string) json.RawMessage {
+	raw := json.RawMessage(s)
+	if len(raw) == 0 || !json.Valid(raw) {
+		return json.RawMessage(fallback)
+	}
+	return raw
 }
 
 // ContextPack is the Stage-2 input (piped to stdin; stored for reproducibility).
@@ -190,6 +202,9 @@ func (c *Coach) buildContextPack(ctx context.Context, weekStart string, edited *
 			MaxHRBpm:        prof.MaxHRBpm,
 			RunConstraints:  rc,
 			GoalText:        prof.GoalText,
+			Goals:           rawJSONOr(prof.GoalsJSON, `[]`),
+			Week:            rawJSONOr(prof.WeekJSON, `{}`),
+			Guardrails:      rawJSONOr(prof.GuardrailsJSON, `{}`),
 		},
 		CrossFitWeek: week,
 		LastWeekPlan: last,
@@ -236,6 +251,9 @@ func (c *Coach) AdjustToday(ctx context.Context, date string, rd readiness.Readi
 		MaxHRBpm:        prof.MaxHRBpm,
 		RunConstraints:  rc,
 		GoalText:        prof.GoalText,
+		Goals:           rawJSONOr(prof.GoalsJSON, `[]`),
+		Week:            rawJSONOr(prof.WeekJSON, `{}`),
+		Guardrails:      rawJSONOr(prof.GuardrailsJSON, `{}`),
 	}
 
 	in := buildDailyAdjustInput(date, rd, today, fit, pp, nil, "")
