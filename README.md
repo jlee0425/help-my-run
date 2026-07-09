@@ -22,7 +22,7 @@ Everything ships as **one binary**: the Go server embeds the built web app. Open
 git clone <your-fork-url> help-my-run
 cd help-my-run
 
-# 1. Paths config (no secrets — see the absolute-path warning inside)
+# 1. Paths config (no secrets; relative paths resolve against the repo root)
 cp .env.example .env
 
 # 2. Worker deps

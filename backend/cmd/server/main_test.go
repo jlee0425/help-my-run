@@ -99,8 +99,6 @@ func testCfg(t *testing.T) *config.Config {
 		AgentEnabledDefault: true,
 		AgentRunTime:        "05:30",
 		AgentTimezone:       "Asia/Seoul",
-		AgentTickInterval:   "1m",
-		ExpoPushBaseURL:     "https://exp.host",
 	}
 }
 

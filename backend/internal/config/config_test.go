@@ -16,7 +16,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 	all := []string{
 		"API_TOKEN", "DB_PATH", "PORT",
 		"GARMIN_EMAIL", "GARMIN_PASSWORD", "GARMIN_TOKENSTORE",
-		"PYTHON_BIN", "WORKER_SCRIPT", "ANTHROPIC_API_KEY",
+		"PYTHON_BIN", "WORKER_SCRIPT",
 		"CLAUDE_BIN", "CLAUDE_MODEL", "IMAGE_DIR",
 		"STREAM_RECENT_WEEKS", "STREAM_FETCH_BUDGET",
 		"CHAT_HISTORY_TURNS",
@@ -71,7 +71,6 @@ func TestLoadExplicit(t *testing.T) {
 	env["GARMIN_TOKENSTORE"] = "/tmp/gc"
 	env["PYTHON_BIN"] = "/usr/bin/python3"
 	env["WORKER_SCRIPT"] = "/srv/worker.py"
-	env["ANTHROPIC_API_KEY"] = "sk-ant"
 	setEnv(t, env)
 
 	cfg, err := Load()
@@ -89,9 +88,6 @@ func TestLoadExplicit(t *testing.T) {
 	}
 	if cfg.PythonBin != "/usr/bin/python3" {
 		t.Errorf("PythonBin = %q, want %q", cfg.PythonBin, "/usr/bin/python3")
-	}
-	if cfg.AnthropicAPIKey != "sk-ant" {
-		t.Errorf("AnthropicAPIKey = %q, want %q", cfg.AnthropicAPIKey, "sk-ant")
 	}
 }
 
@@ -159,12 +155,6 @@ func TestM2ConfigDefaults(t *testing.T) {
 	if c.AgentTimezone != "UTC" {
 		t.Errorf("AgentTimezone = %q, want UTC", c.AgentTimezone)
 	}
-	if c.AgentTickInterval != "1m" {
-		t.Errorf("AgentTickInterval = %q, want 1m", c.AgentTickInterval)
-	}
-	if c.ExpoPushBaseURL != "https://exp.host" {
-		t.Errorf("ExpoPushBaseURL = %q, want https://exp.host", c.ExpoPushBaseURL)
-	}
 }
 
 func TestM3_2StreamConfigDefaults(t *testing.T) {
@@ -205,14 +195,13 @@ func TestM2ConfigOverrides(t *testing.T) {
 	t.Setenv("AGENT_ENABLED", "false")
 	t.Setenv("AGENT_RUN_TIME", "06:00")
 	t.Setenv("AGENT_TZ", "Asia/Seoul")
-	t.Setenv("EXPO_PUSH_BASE_URL", "http://localhost:9999")
 
 	var c Config
 	if err := envconfig.Process("", &c); err != nil {
 		t.Fatalf("envconfig.Process error = %v", err)
 	}
 	if c.AgentEnabledDefault != false || c.AgentRunTime != "06:00" ||
-		c.AgentTimezone != "Asia/Seoul" || c.ExpoPushBaseURL != "http://localhost:9999" {
+		c.AgentTimezone != "Asia/Seoul" {
 		t.Errorf("overrides not applied: %+v", c)
 	}
 }

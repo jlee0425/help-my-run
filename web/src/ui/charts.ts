@@ -58,13 +58,6 @@ export function fmtPace(secPerKm: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-/** Signed delta with unit, trimmed to 1 decimal ("+6 ms", "−21 s/km"). */
-export function fmtDelta(v: number, unit: string): string {
-  const abs = Math.round(Math.abs(v) * 10) / 10;
-  const num = Number.isInteger(abs) ? String(abs) : abs.toFixed(1);
-  const sign = v > 0 ? '▲' : v < 0 ? '▼' : '·';
-  return unit ? `${sign}${num} ${unit}` : `${sign}${num}`;
-}
 
 /** "48:20" / "1:02:10" from seconds. */
 export function fmtDuration(totalS: number): string {

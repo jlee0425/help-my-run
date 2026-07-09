@@ -92,6 +92,17 @@ export function wizardProfilePatch(w: WizardState): {
   };
 }
 
+export const inputStyle: CSSProperties = {
+  width: '100%',
+  background: 'var(--inset)',
+  border: '1px solid var(--inset-border)',
+  borderRadius: 12,
+  padding: '13px 14px',
+  fontSize: 15,
+  color: 'var(--text)',
+  outline: 'none',
+};
+
 export const stepTitleStyle: CSSProperties = { fontSize: 25, fontWeight: 600, lineHeight: 1.2 };
 export const stepBodyStyle: CSSProperties = {
   fontSize: 14,

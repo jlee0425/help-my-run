@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { areaChart, fmtDelta, fmtDuration, fmtPace, gapless, sparkPoints } from './charts';
+import { areaChart, fmtDuration, fmtPace, gapless, sparkPoints } from './charts';
 
 describe('chart math (design-file ports)', () => {
   it('sparkPoints maps min->bottom, max->top across the width', () => {
@@ -26,12 +26,6 @@ describe('chart math (design-file ports)', () => {
     expect(fmtPace(0)).toBe('—');
   });
 
-  it('fmtDelta signs and trims', () => {
-    expect(fmtDelta(6, 'ms')).toBe('▲6 ms');
-    expect(fmtDelta(-21.04, 's/km')).toBe('▼21 s/km');
-    expect(fmtDelta(-3.5, 'bpm')).toBe('▼3.5 bpm');
-    expect(fmtDelta(0, '')).toBe('·0');
-  });
 
   it('fmtDuration renders mm:ss and h:mm:ss', () => {
     expect(fmtDuration(2900)).toBe('48:20');
