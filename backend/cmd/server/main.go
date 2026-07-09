@@ -70,8 +70,19 @@ func Wire(cfg *config.Config) (*App, error) {
 		return res.Garmin.Status, res.Garmin.Synced, res.Garmin.Error
 	}
 
+	// claudeEnv injects the stored setup-token (if any) into every claude -p
+	// call — the subscription path for headless hosts. No token -> claude's own
+	// `claude auth login` credentials are used.
+	claudeEnv := func() []string {
+		tok, err := s.GetSetting(store.SettingClaudeToken)
+		if err != nil || tok == "" {
+			return nil
+		}
+		return []string{"CLAUDE_CODE_OAUTH_TOKEN=" + tok}
+	}
+	execRunner := llm.ExecRunner{Bin: cfg.ClaudeBin, EnvFunc: claudeEnv}
 	llmClient := &llm.Client{
-		Runner:  llm.ExecRunner{Bin: cfg.ClaudeBin},
+		Runner:  execRunner,
 		Model:   cfg.ClaudeModel,
 		Timeout: 120 * time.Second,
 	}
@@ -105,6 +116,7 @@ func Wire(cfg *config.Config) (*App, error) {
 
 		GarminLogin:      garmin.NewLoginManager(cfg.PythonBin, cfg.WorkerScript, extraEnv),
 		GarminTokenstore: cfg.GarminTokenstore,
+		Claude:           &api.ClaudeProbe{Bin: cfg.ClaudeBin, Model: cfg.ClaudeModel, Runner: execRunner},
 	})
 
 	return &App{

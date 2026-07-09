@@ -45,15 +45,24 @@ type Runner interface {
 // errExecNotFound is the sentinel for a missing claude binary (matches exec.ErrNotFound).
 var errExecNotFound = exec.ErrNotFound
 
-// ExecRunner is the production Runner backed by os/exec.
+// ExecRunner is the production Runner backed by os/exec. EnvFunc (optional)
+// supplies extra KEY=VALUE env entries per call — M5 uses it to inject
+// CLAUDE_CODE_OAUTH_TOKEN from the DB so a headless host can run under the
+// owner's Claude subscription without a prior `claude auth login`.
 type ExecRunner struct {
-	Bin string // claude binary path (Config.ClaudeBin)
+	Bin     string          // claude binary path (Config.ClaudeBin)
+	EnvFunc func() []string // nil -> inherit environment unchanged
 }
 
 // Run executes Bin with args, writing stdin, capturing stdout. A non-zero exit
 // surfaces stderr in the error; a missing binary surfaces exec.ErrNotFound.
 func (r ExecRunner) Run(ctx context.Context, args []string, stdin string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, r.Bin, args...)
+	if r.EnvFunc != nil {
+		if extra := r.EnvFunc(); len(extra) > 0 {
+			cmd.Env = append(cmd.Environ(), extra...)
+		}
+	}
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}

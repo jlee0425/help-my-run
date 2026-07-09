@@ -90,6 +90,9 @@ type Deps struct {
 	// M5: Garmin web login.
 	GarminLogin      GarminLogin
 	GarminTokenstore string
+
+	// M5: Claude connection card (nil disables /api/claude/status).
+	Claude *ClaudeProbe
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.
@@ -120,6 +123,11 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/garmin/login", h.garminLogin)
 		r.Post("/api/garmin/login/mfa", h.garminLoginMFA)
 		r.Post("/api/garmin/disconnect", h.garminDisconnect)
+
+		// M5: Claude connection card.
+		r.Get("/api/claude/status", h.claudeStatus)
+		r.Put("/api/claude/token", h.claudeTokenSet)
+		r.Delete("/api/claude/token", h.claudeTokenDelete)
 		r.Get("/api/status", h.status)
 		r.Post("/api/sync", h.sync)
 		r.Get("/api/activities", h.activities)
