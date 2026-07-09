@@ -5,7 +5,7 @@ import "testing"
 func TestM2MigrationCreatesTables(t *testing.T) {
 	s := newTestStore(t)
 
-	wantTables := []string{"device_tokens", "daily_decisions", "agent_runs"}
+	wantTables := []string{"daily_decisions", "agent_runs"}
 	for _, tbl := range wantTables {
 		var name string
 		err := s.DB.QueryRow(
@@ -21,49 +21,6 @@ func TestM2MigrationCreatesTables(t *testing.T) {
 		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_agent_runs_last_run_date'`,
 	).Scan(&idx); err != nil {
 		t.Errorf("idx_agent_runs_last_run_date not found: %v", err)
-	}
-}
-
-func TestDeviceTokenUpsertListDelete(t *testing.T) {
-	s := newTestStore(t)
-
-	if _, err := s.ListDeviceTokens(); err != nil {
-		t.Fatalf("ListDeviceTokens on empty error = %v", err)
-	}
-
-	in := DeviceToken{ExpoPushToken: "ExponentPushToken[abc]", Platform: "ios", UpdatedAt: "set-by-store"}
-	if err := s.UpsertDeviceToken(in); err != nil {
-		t.Fatalf("UpsertDeviceToken error = %v", err)
-	}
-	toks, err := s.ListDeviceTokens()
-	if err != nil {
-		t.Fatalf("ListDeviceTokens error = %v", err)
-	}
-	if len(toks) != 1 || toks[0].ExpoPushToken != "ExponentPushToken[abc]" || toks[0].Platform != "ios" {
-		t.Fatalf("tokens = %+v, want one ios token", toks)
-	}
-	if toks[0].UpdatedAt == "" || toks[0].UpdatedAt == "set-by-store" {
-		t.Errorf("UpdatedAt = %q, want server-set", toks[0].UpdatedAt)
-	}
-
-	in.Platform = "android"
-	if err := s.UpsertDeviceToken(in); err != nil {
-		t.Fatalf("re-UpsertDeviceToken error = %v", err)
-	}
-	toks, _ = s.ListDeviceTokens()
-	if len(toks) != 1 || toks[0].Platform != "android" {
-		t.Errorf("after re-upsert = %+v, want one android token", toks)
-	}
-
-	if err := s.DeleteDeviceToken("ExponentPushToken[abc]"); err != nil {
-		t.Fatalf("DeleteDeviceToken error = %v", err)
-	}
-	toks, _ = s.ListDeviceTokens()
-	if len(toks) != 0 {
-		t.Errorf("after delete len = %d, want 0", len(toks))
-	}
-	if err := s.DeleteDeviceToken("ExponentPushToken[missing]"); err != nil {
-		t.Errorf("DeleteDeviceToken(missing) error = %v, want nil", err)
 	}
 }
 

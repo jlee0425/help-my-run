@@ -19,6 +19,9 @@ type AthleteProfile struct {
 	DailyRunTime       string // "HH:MM" 24h local (M2)
 	Timezone           string // IANA, e.g. "Asia/Seoul" (M2)
 	AgentEnabled       bool   // M2 daily agent on/off
+	GoalsJSON          string // M5: JSON array, e.g. ["crossfit","fitness"]
+	WeekJSON           string // M5: {"runs_per_week":4,"crossfit_days":3,"rest_day":"monday"}
+	GuardrailsJSON     string // M5: {"no_b2b_hard":true,...} five coach guardrails
 	UpdatedAt          string
 }
 
@@ -30,11 +33,13 @@ func (s *Store) GetAthleteProfile() (AthleteProfile, error) {
 	err := s.DB.QueryRow(`
 		SELECT target_weekly_km, progression_mode, zone2_ceiling_bpm, threshold_bpm,
 		       max_hr_bpm, run_constraints_json, goal_text,
-		       daily_run_time, timezone, agent_enabled, updated_at
+		       daily_run_time, timezone, agent_enabled,
+		       goals_json, week_json, guardrails_json, updated_at
 		FROM athlete_profile WHERE id = 1`).
 		Scan(&p.TargetWeeklyKm, &p.ProgressionMode, &z2, &thr, &mx,
 			&p.RunConstraintsJSON, &p.GoalText,
-			&p.DailyRunTime, &p.Timezone, &agentEnabled, &p.UpdatedAt)
+			&p.DailyRunTime, &p.Timezone, &agentEnabled,
+			&p.GoalsJSON, &p.WeekJSON, &p.GuardrailsJSON, &p.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AthleteProfile{}, ErrNotFound
 	}
@@ -62,12 +67,23 @@ func (s *Store) UpsertAthleteProfile(p AthleteProfile) error {
 	if p.AgentEnabled {
 		agentEnabled = 1
 	}
+	goals, week, guardrails := p.GoalsJSON, p.WeekJSON, p.GuardrailsJSON
+	if goals == "" {
+		goals = "[]"
+	}
+	if week == "" {
+		week = "{}"
+	}
+	if guardrails == "" {
+		guardrails = "{}"
+	}
 	_, err := s.DB.Exec(`
 		INSERT INTO athlete_profile
 			(id, target_weekly_km, progression_mode, zone2_ceiling_bpm, threshold_bpm,
 			 max_hr_bpm, run_constraints_json, goal_text,
-			 daily_run_time, timezone, agent_enabled, updated_at)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			 daily_run_time, timezone, agent_enabled,
+			 goals_json, week_json, guardrails_json, updated_at)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			target_weekly_km     = excluded.target_weekly_km,
 			progression_mode     = excluded.progression_mode,
@@ -79,9 +95,13 @@ func (s *Store) UpsertAthleteProfile(p AthleteProfile) error {
 			daily_run_time       = excluded.daily_run_time,
 			timezone             = excluded.timezone,
 			agent_enabled        = excluded.agent_enabled,
+			goals_json           = excluded.goals_json,
+			week_json            = excluded.week_json,
+			guardrails_json      = excluded.guardrails_json,
 			updated_at           = excluded.updated_at`,
 		p.TargetWeeklyKm, p.ProgressionMode, p.Zone2CeilingBpm, p.ThresholdBpm,
 		p.MaxHRBpm, p.RunConstraintsJSON, p.GoalText,
-		p.DailyRunTime, p.Timezone, agentEnabled, now)
+		p.DailyRunTime, p.Timezone, agentEnabled,
+		goals, week, guardrails, now)
 	return err
 }
