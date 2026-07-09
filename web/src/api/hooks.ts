@@ -215,6 +215,76 @@ export function useProfile() {
   });
 }
 
+// --- garmin (endpoints land with the Garmin-login task; hooks 404-tolerant) ---
+
+export type GarminStatus = { connected: boolean; last_synced_at: string | null };
+
+export function useGarminStatus() {
+  return useQuery<GarminStatus | null>({
+    queryKey: ['garmin-status'],
+    queryFn: async () => {
+      try {
+        return await api<GarminStatus>('/api/garmin/status');
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+  });
+}
+
+export function useGarminDisconnect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<void>('/api/garmin/disconnect'),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['garmin-status'] });
+      void qc.invalidateQueries({ queryKey: ['status'] });
+    },
+  });
+}
+
+// --- claude (endpoints land with the Claude-status task) ---
+
+export type ClaudeStatus = {
+  binary_found: boolean;
+  authenticated: boolean;
+  model: string;
+  detail: string;
+  checked_at: string;
+};
+
+export function useClaudeStatus() {
+  return useQuery<ClaudeStatus | null>({
+    queryKey: ['claude-status'],
+    queryFn: async () => {
+      try {
+        return await api<ClaudeStatus>('/api/claude/status');
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useClaudeTokenSet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => apiPut<void>('/api/claude/token', { token }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['claude-status'] }),
+  });
+}
+
+export function useClaudeTokenDelete() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiDelete<void>('/api/claude/token'),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['claude-status'] }),
+  });
+}
+
 export function useUpdateProfile() {
   const qc = useQueryClient();
   return useMutation({
