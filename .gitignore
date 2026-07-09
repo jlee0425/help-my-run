@@ -39,3 +39,9 @@ dist/
 .DS_Store
 .idea/
 .vscode/
+
+# M5 web build artifacts
+web/node_modules/
+web/dist/
+backend/internal/webui/dist/*
+!backend/internal/webui/dist/.keep

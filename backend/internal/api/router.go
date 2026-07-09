@@ -16,6 +16,7 @@ import (
 	"help-my-run/backend/internal/readiness"
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/streams"
+	"help-my-run/backend/internal/webui"
 )
 
 // SyncFunc runs the Garmin sync and returns the flattened result:
@@ -133,6 +134,10 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/chat", h.chatHistory)
 		r.Delete("/api/chat", h.clearChat)
 	})
+
+	// M5: everything that isn't an API route is the embedded SPA (with
+	// index.html fallback for client-side routes; JSON 404 for unknown /api/*).
+	r.NotFound(webui.Handler().ServeHTTP)
 
 	return r
 }

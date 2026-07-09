@@ -221,3 +221,18 @@ func TestStatusIncludesAgentSchedule(t *testing.T) {
 		t.Errorf("agent_next_run = %v, want RFC3339", resp.AgentNextRun)
 	}
 }
+
+func TestNonAPIRoutesFallToWebUI(t *testing.T) {
+	h, _ := newTestServer(t)
+	// dist/ holds only .keep in the test binary -> 503 with a build hint proves
+	// the SPA handler is mounted as the router's NotFound.
+	rec := doJSON(t, h, http.MethodGet, "/settings", "", nil)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "make build") {
+		t.Fatalf("/settings = %d %q, want 503 build hint", rec.Code, rec.Body.String())
+	}
+	// Unknown API path stays JSON 404.
+	rec = doJSON(t, h, http.MethodGet, "/api/nope", "", nil)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"error"`) {
+		t.Fatalf("/api/nope = %d %q, want JSON 404", rec.Code, rec.Body.String())
+	}
+}
