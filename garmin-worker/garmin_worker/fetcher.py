@@ -21,6 +21,11 @@ from . import normalize
 # request volume low). Overridable in tests via sleep_fn.
 _PER_DAY_DELAY_S = 0.2
 
+# Garmin's range-native wellness endpoints (body battery) reject windows over
+# ~31 days ("API Error 400 - requested date range is too big"). The first sync
+# backfills 84 days, so range calls must be chunked. 28 keeps headroom.
+_RANGE_CHUNK_DAYS = 28
+
 
 def _date_range(since: str, until: str):
     start = _dt.date.fromisoformat(since)
@@ -29,6 +34,17 @@ def _date_range(since: str, until: str):
     while cur <= end:
         yield cur.isoformat()
         cur += _dt.timedelta(days=1)
+
+
+def _chunk_ranges(since: str, until: str, chunk_days: int = _RANGE_CHUNK_DAYS):
+    """Yield contiguous (since, until) sub-windows of at most chunk_days each."""
+    start = _dt.date.fromisoformat(since)
+    end = _dt.date.fromisoformat(until)
+    cur = start
+    while cur <= end:
+        stop = min(cur + _dt.timedelta(days=chunk_days - 1), end)
+        yield cur.isoformat(), stop.isoformat()
+        cur = stop + _dt.timedelta(days=1)
 
 
 def run_fetch(
@@ -45,8 +61,11 @@ def run_fetch(
     rhr = []
     vo2max = []
 
-    # Body Battery: one range call for the whole window.
-    bb_entries = client.get_body_battery(since, until) or []
+    # Body Battery: range-native, but capped by Garmin (~31 days) — fetch in
+    # contiguous ≤_RANGE_CHUNK_DAYS windows and concatenate.
+    bb_entries = []
+    for c_since, c_until in _chunk_ranges(since, until):
+        bb_entries.extend(client.get_body_battery(c_since, c_until) or [])
     body_battery = [
         normalize.normalize_body_battery_day(entry.get("date"), entry)
         for entry in bb_entries

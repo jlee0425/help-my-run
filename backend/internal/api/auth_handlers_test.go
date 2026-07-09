@@ -268,3 +268,45 @@ func TestPushSubscribeLifecycle(t *testing.T) {
 }
 
 func addBearer(r *http.Request) { r.Header.Set("Authorization", "Bearer "+testToken) }
+
+// M5 review fix: a failed Garmin sync must surface as 502 + top-level error,
+// never a silent 200 (real-world: Garmin 400 "requested date range is too big").
+func TestSyncErrorIsNotASilent200(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "syncerr.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	msg := "worker exit 1: fetch failed: API call client error (400): API Error 400 - requested date range is too big."
+	deps := Deps{
+		Store: s, Auth: testAuth(t, s),
+		SyncFunc: func(ctx context.Context) (string, int, *string) { return "error", 0, &msg },
+		Coach:    &fakeCoach{}, ImageDir: t.TempDir(), Agent: &fakeAgent{},
+		Progress: &fakeProgress{}, Streams: &fakeStreams{}, Chat: &fakeChat{},
+	}
+	h := NewRouter(deps)
+
+	rec := doJSON(t, h, http.MethodPost, "/api/sync", "", addBearer)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("failed sync = %d, want 502 (body=%s)", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error  string `json:"error"`
+		Garmin struct {
+			Status string  `json:"status"`
+			Error  *string `json:"error"`
+		} `json:"garmin"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !strings.Contains(body.Error, "date range is too big") {
+		t.Errorf("top-level error = %q, want the worker message", body.Error)
+	}
+	if body.Garmin.Status != "error" || body.Garmin.Error == nil {
+		t.Errorf("garmin source = %+v, want embedded error preserved", body.Garmin)
+	}
+}

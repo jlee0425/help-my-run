@@ -85,9 +85,18 @@ func (h *handlers) agentSchedule() (*string, bool) {
 
 func (h *handlers) sync(w http.ResponseWriter, r *http.Request) {
 	gs, gsn, gErr := h.d.SyncFunc(r.Context())
-	writeJSON(w, http.StatusOK, syncResp{
-		Garmin: syncSourceResult{Status: gs, Synced: gsn, Error: gErr},
-	})
+	result := syncSourceResult{Status: gs, Synced: gsn, Error: gErr}
+	// M5 review fix: a failed sync must not hide inside a 200. Mirror the
+	// source error at the top level (the SPA's ApiError reads .error) and
+	// return 502 so curl -fsS / fetch callers fail loudly.
+	if gs == "error" && gErr != nil {
+		writeJSON(w, http.StatusBadGateway, struct {
+			syncResp
+			Error string `json:"error"`
+		}{syncResp{Garmin: result}, *gErr})
+		return
+	}
+	writeJSON(w, http.StatusOK, syncResp{Garmin: result})
 }
 
 func (h *handlers) activities(w http.ResponseWriter, r *http.Request) {

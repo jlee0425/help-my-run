@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
   updateMutate: vi.fn(),
   authed: false,
+  syncError: null as Error | null,
 }));
 
 vi.mock('../../api/auth', () => ({ setup: mocks.setup }));
@@ -37,7 +38,12 @@ vi.mock('../../api/hooks', () => ({
       agent_enabled: true,
     },
   }),
-  useSync: () => ({ mutate: vi.fn() }),
+  useSync: () => ({
+    mutate: vi.fn(),
+    isError: mocks.syncError !== null,
+    error: mocks.syncError,
+    isPending: false,
+  }),
   useUpdateProfile: () => ({ mutate: mocks.updateMutate, isPending: false }),
 }));
 
@@ -137,6 +143,31 @@ describe('OnboardingPage', () => {
       code: '424242',
     });
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+  });
+
+  it('surfaces a failed first sync instead of pulsing forever', async () => {
+    mocks.syncError = new Error(
+      'worker exit 1: fetch failed: API call client error (400): API Error 400 - requested date range is too big.',
+    );
+    mocks.apiPost.mockResolvedValueOnce({ status: 'ok' }); // garmin login without MFA
+    renderWizard();
+    await userEvent.click(screen.getByRole('button', { name: 'Get started' }));
+    await userEvent.type(screen.getByLabelText('Password'), 'a strong password');
+    await userEvent.type(screen.getByLabelText('Confirm password'), 'a strong password');
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    await screen.findByText('hmr_first_token');
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await userEvent.type(screen.getByLabelText('Garmin email'), 'e@x.com');
+    await userEvent.type(screen.getByLabelText('Garmin password'), 'pw');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in to Garmin Connect' }));
+    await screen.findByText('Connected to Garmin');
+
+    expect(screen.getByText(/First sync failed:.*date range is too big/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry sync' })).toBeInTheDocument();
+    expect(screen.queryByText(/CONTINUE WHENEVER/)).not.toBeInTheDocument();
+    // Login itself succeeded, so the wizard still allows Continue.
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+    mocks.syncError = null;
   });
 
   it('finishes with one profile PUT carrying the wizard payload', async () => {

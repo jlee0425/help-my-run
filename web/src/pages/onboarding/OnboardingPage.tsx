@@ -360,6 +360,8 @@ function GarminStep({ onConnected }: { onConnected: () => void }) {
               >
                 {row.done ? (
                   <span style={{ color: 'var(--green)', fontSize: 13 }}>✓</span>
+                ) : sync.isError ? (
+                  <span style={{ color: 'var(--red)', fontSize: 13 }}>✕</span>
                 ) : (
                   <span className="pulse-dot" style={{ background: 'var(--label)' }} />
                 )}
@@ -367,9 +369,33 @@ function GarminStep({ onConnected }: { onConnected: () => void }) {
               </div>
             ))}
           </div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--faint)', marginTop: 12 }}>
-            FIRST SYNC RUNS IN THE BACKGROUND — CONTINUE WHENEVER
-          </div>
+          {sync.isError ? (
+            <div
+              style={{
+                marginTop: 12,
+                background: 'var(--red-tint)',
+                border: '1px solid var(--red-border)',
+                borderRadius: 12,
+                padding: '11px 13px',
+              }}
+            >
+              <div style={{ fontSize: 13, color: 'var(--red)', lineHeight: 1.5 }}>
+                First sync failed: {(sync.error as Error).message}
+              </div>
+              <button
+                className="btn-secondary"
+                style={{ marginTop: 10, padding: '8px 14px', fontSize: 13 }}
+                disabled={sync.isPending}
+                onClick={() => sync.mutate()}
+              >
+                {sync.isPending ? 'Retrying…' : 'Retry sync'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--faint)', marginTop: 12 }}>
+              FIRST SYNC RUNS IN THE BACKGROUND — CONTINUE WHENEVER
+            </div>
+          )}
         </div>
       )}
     </div>
