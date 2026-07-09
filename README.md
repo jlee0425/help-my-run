@@ -1,20 +1,20 @@
-# help-my-run
+# help-my-run · Running on AI
 
-A self-hostable, single-user AI running coach. It pulls your runs **and** your recovery data (sleep, HRV, Body Battery, resting HR) from **Garmin Connect** into a local database, then uses Claude to coach you. It delivers the data foundation: log in to Garmin once, sync, and view your runs + recovery in a small Expo app.
+A self-hostable, single-user AI running coach — now a **website + installable PWA**. It pulls your runs **and** your recovery data (sleep, HRV, Body Battery, resting HR) from **Garmin Connect** into a local database, then uses Claude to coach you: a readiness verdict and a (possibly reshaped) session every morning, 12-week trends, a weekly plan periodised around your CrossFit schedule, and a chat that answers from your own data.
+
+Everything ships as **one binary**: the Go server embeds the built web app. Open it in a browser, install it to your phone's home screen, done.
 
 ## Architecture
 
-- **Go core** (`backend/`) owns the SQLite database, the REST API, and the periodic sync scheduler. It is the single source of truth.
-- **Python Garmin worker** (`garmin-worker/`) is a thin, stateless subprocess that the Go core invokes to fetch Garmin data and print one JSON object to stdout. It is the only component that talks to Garmin.
-- **Expo app** (`app/`) is the client. It stores your backend URL + API token in `expo-secure-store` and reads/writes the Go API over HTTP.
+- **Go core** (`backend/`) owns the SQLite database, the REST API, the daily agent + sync scheduler, auth, Web Push — and serves the embedded web UI. Single source of truth, single process.
+- **Python Garmin worker** (`garmin-worker/`) is a thin, stateless subprocess the Go core invokes to talk to Garmin (fetch, FIT streams, and the web-driven login with MFA over stdin/stdout).
+- **Web app** (`web/`) is a React + Vite SPA (dark "Running on AI" design) built into the binary. Installable as a PWA; morning briefings arrive via Web Push.
 
 ## Prerequisites
 
-- **A Garmin Connect account** (email + password) for the one-time `worker.py login`.
-- **No Anthropic API key needed.** The AI features (M1 plans, M2 daily loop, M3.3 chat) run through the `claude` CLI under your **Claude subscription** at $0 per token. ⚠️ **Leave `ANTHROPIC_API_KEY` UNSET** — `claude` prefers an env API key over your subscription, so any value there (even a placeholder) makes `claude -p` fail with a 401. Only set it if you deliberately want metered API billing.
-- Go 1.22+, Python 3.11+, and Node.js 18+ installed.
-
-> **⚠️ Use absolute paths in `.env`.** `make run-backend` runs from `backend/`, so relative `PYTHON_BIN` / `WORKER_SCRIPT` / `IMAGE_DIR` / `DB_PATH` resolve under `backend/` and break (e.g. the Garmin worker fails with "no such file"). Point them at absolute repo-root paths — see `.env.example`.
+- **A Garmin Connect account** — you'll sign in inside the app on first run (MFA supported). Credentials are used once to mint OAuth tokens and never stored.
+- **A Claude subscription + Claude Code CLI.** All AI features run through `claude -p` at **$0 per token** under your subscription. ⚠️ **Leave `ANTHROPIC_API_KEY` UNSET** — any value there (even a placeholder) switches `claude -p` to metered API billing and fails with a 401.
+- Go 1.22+, Python 3.11+, and Node.js 18+ (Node is needed only to build the UI).
 
 ## Setup
 
@@ -22,81 +22,74 @@ A self-hostable, single-user AI running coach. It pulls your runs **and** your r
 git clone <your-fork-url> help-my-run
 cd help-my-run
 
-# 1. Configure secrets
+# 1. Paths config (no secrets — see the absolute-path warning inside)
 cp .env.example .env
-# edit .env and fill in API_TOKEN, GARMIN_EMAIL, GARMIN_PASSWORD, and the absolute
-# PYTHON_BIN / WORKER_SCRIPT / DB_PATH / IMAGE_DIR paths (and any optional overrides)
 
-# 2. Backend deps
-cd backend && go mod download && cd ..
-
-# 3. Garmin worker deps
+# 2. Worker deps
 cd garmin-worker && python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt && deactivate && cd ..
 
-# 4. App deps
-cd app && npm install && cd ..
+# 3. Claude Code (subscription path)
+claude auth login        # once, on this host — NOT --console
+# Headless/VPS with no browser? Run `claude setup-token` on any machine with one,
+# then paste the token in the app: Settings → Claude → "Headless server?"
+
+# 4. Build the single binary (builds the web UI + embeds it)
+make build
 ```
 
-## One-time Garmin login
-
-Run the interactive login once. It will prompt for an **MFA code** if your Garmin account has multi-factor auth enabled. On success it persists OAuth tokens to `GARMIN_TOKENSTORE` (default `~/.garminconnect`) so subsequent syncs run non-interactively.
+## First run
 
 ```bash
-make garmin-login
+./bin/helpmyrun          # or: make run-backend (dev mode, runs from source)
 ```
 
-### Claude Code (M1 plan generation)
+Open `http://localhost:8080` (or `http://<your-LAN-ip>:8080` from your phone). The first-run wizard walks you through everything:
 
-M1 generates plans via the `claude` CLI under your Claude subscription (no API key needed):
+1. **Secure** — set the owner password (this also mints an API token for scripts, shown once).
+2. **Connect Garmin** — sign in with your Garmin email/password; enter the MFA code if asked. Tokens are stored locally; the nightly pull runs unattended from then on.
+3. **Goals, numbers, week rhythm, guardrails** — shape how the coach makes calls (e.g. "keep running ≤55% of load so legs stay fresh for lifting").
 
-1. Install the Claude Code CLI on the host.
-2. Log in once (interactive, opens a browser):
+Then it's live: **Today** (readiness verdict + session), **Trends** (aerobic engine over 12 weeks), **Coach** (ask your data), **Plan** (CrossFit-aware week), Settings.
 
-   ```bash
-   claude auth login
-   ```
+## Install as an app + notifications
 
-   Do NOT use `claude auth login --console` (that switches to the metered API key path).
+- **Android/desktop Chrome:** you'll get an install prompt (or ⋮ → *Install app*).
+- **iPhone:** Share → *Add to Home Screen*. (iOS only allows Web Push for installed PWAs, 16.4+.)
+- Enable **morning notifications** in the wizard's last step or Settings → Notifications — the daily agent pushes its verdict when it runs (default 06:00, configurable in Settings).
 
-   **Headless / remote host?** `claude -p` reads `~/.claude/.credentials.json`, so it only
-   works where `claude auth login` has been run interactively (e.g. your dev laptop). On a
-   browser-less VPS/CI host, run `claude setup-token` once on a machine with a browser to mint
-   a long-lived subscription token, then expose that token in this host's environment so
-   `claude -p` authenticates non-interactively. `ANTHROPIC_API_KEY` remains a paid fallback.
-3. Set the M1 env vars in `.env` (defaults shown):
+### HTTPS note
 
-   ```bash
-   CLAUDE_BIN=claude
-   CLAUDE_MODEL=claude-opus-4-8
-   IMAGE_DIR=./data/crossfit
-   ```
-
-`IMAGE_DIR` must be writable by the backend (uploaded box-schedule photos are saved there and read by `claude -p`).
-
-## Running
+Service workers, installation, and push need HTTPS (localhost is exempt). The simplest options:
 
 ```bash
-make run-backend   # starts the Go API + periodic sync ticker on $PORT (default 8080)
-make run-app       # starts the Expo dev server (open in Expo Go or a dev build)
+# Tailscale (easiest — private HTTPS on your tailnet):
+tailscale serve https / http://localhost:8080
+
+# Caddy (public domain):
+# Caddyfile:  yourdomain.example { reverse_proxy localhost:8080 }
 ```
 
-In the app's Settings screen, enter the backend URL (e.g. `http://<your-LAN-ip>:8080`) and your `API_TOKEN`, then tap **Sync now**. (Garmin connection is the one-time `make garmin-login` above; Settings shows the Garmin connection status.)
+Plain `http://<lan-ip>:8080` still works as a normal website (no install/push).
 
-## Syncing
+## Development
 
 ```bash
-make sync          # POSTs /api/sync (the backend must be running)
+make run-backend   # Go API on :8080
+make run-web       # Vite dev server with /api proxied to :8080 (hot reload)
+make test          # Go + Python + web test suites
 ```
 
-## Testing
+## Scripts / API access
 
-```bash
-make test          # runs the Go, Python worker, and Expo app test suites
-```
+The API accepts `Authorization: Bearer <token>` with the API token from setup (regenerate in Settings → Security — it's shown once). E.g. `make sync` POSTs `/api/sync` with `API_TOKEN` from your environment.
 
-## Security note
+Locked out? `./bin/helpmyrun --reset-password` clears the owner password so setup runs again.
 
-All secrets live in `.env`, which is **gitignored**. Never commit credentials (API token, Garmin password) or your Garmin token directory. Review `.gitignore` before pushing.
+## Security notes
+
+- No secrets live in `.env` — the owner password (argon2id), API token (hashed), optional Claude setup-token, and VAPID keys live in the local SQLite DB; Garmin OAuth tokens live in `GARMIN_TOKENSTORE`.
+- Garmin credentials are passed to the login subprocess over stdin, used once, never logged or persisted.
+- Sessions are HttpOnly SameSite cookies with a 30-day sliding expiry.
 
 ## Disclaimer
 
