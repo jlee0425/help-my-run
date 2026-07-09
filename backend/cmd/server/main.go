@@ -28,6 +28,7 @@ import (
 	"help-my-run/backend/internal/store"
 	"help-my-run/backend/internal/streams"
 	syncpkg "help-my-run/backend/internal/sync"
+	"help-my-run/backend/internal/webpush"
 )
 
 // syncInterval is how often the periodic sync ticker fires.
@@ -92,13 +93,17 @@ func Wire(cfg *config.Config) (*App, error) {
 
 	authService := auth.New(s)
 
-	// M5 transitional: notifications are re-wired to Web Push in Task 18; the
-	// agent's briefing seam is a no-op sender until then.
+	pushService, err := webpush.New(s)
+	if err != nil {
+		_ = s.Close()
+		return nil, err
+	}
+
 	dailyAgent := agent.New(
 		s,
 		agent.NewRealSyncer(s, runner, extraEnv),
 		coachEngine,
-		agent.SenderFunc(func(ctx context.Context, title, body, url string) error { return nil }),
+		pushService, // Web Push briefing (M5)
 		agentClock{},
 		nil, // loc resolved in main() from profile; agent default UTC is fine for Wire
 	)
@@ -117,6 +122,7 @@ func Wire(cfg *config.Config) (*App, error) {
 		GarminLogin:      garmin.NewLoginManager(cfg.PythonBin, cfg.WorkerScript, extraEnv),
 		GarminTokenstore: cfg.GarminTokenstore,
 		Claude:           &api.ClaudeProbe{Bin: cfg.ClaudeBin, Model: cfg.ClaudeModel, Runner: execRunner},
+		Push:             pushService,
 	})
 
 	return &App{

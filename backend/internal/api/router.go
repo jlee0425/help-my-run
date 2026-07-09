@@ -93,6 +93,15 @@ type Deps struct {
 
 	// M5: Claude connection card (nil disables /api/claude/status).
 	Claude *ClaudeProbe
+
+	// M5: Web Push (nil disables /api/push/*).
+	Push Push
+}
+
+// Push is the Web Push seam (*webpush.Service satisfies it).
+type Push interface {
+	PublicKey() string
+	Broadcast(ctx context.Context, title, body, url string) error
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.
@@ -128,6 +137,12 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/claude/status", h.claudeStatus)
 		r.Put("/api/claude/token", h.claudeTokenSet)
 		r.Delete("/api/claude/token", h.claudeTokenDelete)
+
+		// M5: Web Push.
+		r.Get("/api/push/vapid-public-key", h.pushVAPIDKey)
+		r.Post("/api/push/subscribe", h.pushSubscribe)
+		r.Delete("/api/push/subscribe", h.pushUnsubscribe)
+		r.Post("/api/push/test", h.pushTest)
 		r.Get("/api/status", h.status)
 		r.Post("/api/sync", h.sync)
 		r.Get("/api/activities", h.activities)

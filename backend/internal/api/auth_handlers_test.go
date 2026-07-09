@@ -239,3 +239,32 @@ func TestNonAPIRoutesFallToWebUI(t *testing.T) {
 		t.Fatalf("/api/nope = %d %q, want JSON 404", rec.Code, rec.Body.String())
 	}
 }
+
+func TestPushSubscribeLifecycle(t *testing.T) {
+	h, s := newTestServer(t)
+	// No Push service wired in newTestServer -> key/test degrade to 503.
+	if rec := do(t, h, http.MethodGet, "/api/push/vapid-public-key", testToken); rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("vapid key unwired = %d, want 503", rec.Code)
+	}
+	// Subscribe/unsubscribe only need the store.
+	body := `{"endpoint":"https://push.example/e1","keys":{"p256dh":"pk","auth":"ak"}}`
+	if rec := doJSON(t, h, http.MethodPost, "/api/push/subscribe", body, addBearer); rec.Code != http.StatusNoContent {
+		t.Fatalf("subscribe = %d", rec.Code)
+	}
+	subs, _ := s.ListPushSubscriptions()
+	if len(subs) != 1 || subs[0].P256dh != "pk" {
+		t.Fatalf("stored subs = %+v", subs)
+	}
+	if rec := doJSON(t, h, http.MethodPost, "/api/push/subscribe", `{"endpoint":"x"}`, addBearer); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad subscribe = %d, want 400", rec.Code)
+	}
+	if rec := doJSON(t, h, http.MethodDelete, "/api/push/subscribe", `{"endpoint":"https://push.example/e1"}`, addBearer); rec.Code != http.StatusNoContent {
+		t.Fatalf("unsubscribe = %d", rec.Code)
+	}
+	subs, _ = s.ListPushSubscriptions()
+	if len(subs) != 0 {
+		t.Fatalf("subs after unsubscribe = %+v", subs)
+	}
+}
+
+func addBearer(r *http.Request) { r.Header.Set("Authorization", "Bearer "+testToken) }
