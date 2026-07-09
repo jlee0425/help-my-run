@@ -11,6 +11,23 @@ implementation. Order rationale: M6 turns M5 into a daily habit (push on the
 phone, survives reboots); M7 before M8 because richer Garmin data improves the
 chat/agent for free; chat polish last so it has more to say.
 
+## R1 — Post-migration cleanup (timeboxed, before M6)
+Debt inventory from the RN→PWA migration — confirmed items only:
+- Local `.env` scrubbed of dead credentials (done 2026-07-09: API_TOKEN,
+  GARMIN_EMAIL/PASSWORD, STRAVA_*, EXPO_PUSH_BASE_URL); `.env` is path/port
+  config only from here on.
+- Remove dead config fields: `AnthropicAPIKey` stub, `ExpoPushBaseURL`,
+  `AgentTickInterval`.
+- Untrack `web/tsconfig.tsbuildinfo` (build artifact) + gitignore.
+- Remove dead `fmtDelta` chart helper.
+- Split the 789-line `OnboardingPage.tsx` into per-step components.
+- `make run-backend` supplies absolute-path defaults (kills the README's
+  absolute-paths footgun at the source).
+- Add repo `CLAUDE.md` (architecture map, commands, hard constraints).
+Skipped deliberately: coach/chat pack-helper unification (mirrored-package
+convention), ESLint (tsc gates types), DATA_DIR rework (M6 systemd
+WorkingDirectory solves it properly).
+
 ## M6 — "In your pocket"
 Unattended operation + private remote access + owner-journey polish.
 - systemd unit + `make install`; auto-restart; journald logging.
