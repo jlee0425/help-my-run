@@ -224,11 +224,14 @@ func TestStatusIncludesAgentSchedule(t *testing.T) {
 
 func TestNonAPIRoutesFallToWebUI(t *testing.T) {
 	h, _ := newTestServer(t)
-	// dist/ holds only .keep in the test binary -> 503 with a build hint proves
-	// the SPA handler is mounted as the router's NotFound.
+	// The SPA handler is the router's NotFound: /settings serves index.html
+	// when the UI is built into dist/, or the 503 build hint when it isn't —
+	// never the API's JSON 404.
 	rec := doJSON(t, h, http.MethodGet, "/settings", "", nil)
-	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "make build") {
-		t.Fatalf("/settings = %d %q, want 503 build hint", rec.Code, rec.Body.String())
+	builtOK := rec.Code == http.StatusOK && strings.Contains(rec.Body.String(), "<html")
+	unbuiltOK := rec.Code == http.StatusServiceUnavailable && strings.Contains(rec.Body.String(), "make build")
+	if !builtOK && !unbuiltOK {
+		t.Fatalf("/settings = %d %q, want SPA html or 503 build hint", rec.Code, rec.Body.String())
 	}
 	// Unknown API path stays JSON 404.
 	rec = doJSON(t, h, http.MethodGet, "/api/nope", "", nil)

@@ -46,6 +46,10 @@ func TokenStoreReady(path string) bool {
 	return len(entries) > 0
 }
 
+// ExpandHome is the exported form of expandHome (M5: the API's Garmin
+// disconnect handler needs the resolved token-store path).
+func ExpandHome(path string) (string, bool) { return expandHome(path) }
+
 // expandHome replaces a leading "~" (alone or before a path separator) with the
 // user home dir. It returns (path, false) when the home dir cannot be resolved.
 func expandHome(path string) (string, bool) {

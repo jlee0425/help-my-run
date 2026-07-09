@@ -102,6 +102,9 @@ func Wire(cfg *config.Config) (*App, error) {
 		Progress: progressEngine,
 		Streams:  streamsEngine,
 		Chat:     chatEngine,
+
+		GarminLogin:      garmin.NewLoginManager(cfg.PythonBin, cfg.WorkerScript, extraEnv),
+		GarminTokenstore: cfg.GarminTokenstore,
 	})
 
 	return &App{

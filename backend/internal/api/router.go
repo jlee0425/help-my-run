@@ -10,6 +10,7 @@ import (
 
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/auth"
+	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/metrics"
 	"help-my-run/backend/internal/progress"
@@ -59,6 +60,12 @@ type Streams interface {
 	FetchAndAnalyze(ctx context.Context, activityID int64) (streams.StreamAnalysis, error)
 }
 
+// GarminLogin is the M5 web-login seam (*garmin.LoginManager satisfies it).
+type GarminLogin interface {
+	Start(ctx context.Context, email, password string) garmin.LoginResult
+	SubmitMFA(ctx context.Context, loginID, code string) garmin.LoginResult
+}
+
 // Chat is the M3.3 chat-engine seam, injected from main.go (avoids an import
 // cycle: api must not import the concrete chat.Engine). *chat.Engine satisfies
 // it structurally. Answer persists both turns and returns the assistant turn;
@@ -79,6 +86,10 @@ type Deps struct {
 	Progress Progress // M3.1: progress engine (GET /api/progress, POST /api/progress/analyze)
 	Streams  Streams  // M3.2: streams engine (GET .../analysis, POST .../stream/fetch)
 	Chat     Chat     // M3.3: chat engine (POST /api/chat); GET/DELETE use Store directly
+
+	// M5: Garmin web login.
+	GarminLogin      GarminLogin
+	GarminTokenstore string
 }
 
 // NewRouter builds the chi router with public + bearer-protected routes.
@@ -103,6 +114,12 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/logout", h.logout)
 		r.Post("/api/auth/password", h.changePassword)
 		r.Post("/api/auth/token", h.regenerateToken)
+
+		// M5: Garmin web login.
+		r.Get("/api/garmin/status", h.garminStatus)
+		r.Post("/api/garmin/login", h.garminLogin)
+		r.Post("/api/garmin/login/mfa", h.garminLoginMFA)
+		r.Post("/api/garmin/disconnect", h.garminDisconnect)
 		r.Get("/api/status", h.status)
 		r.Post("/api/sync", h.sync)
 		r.Get("/api/activities", h.activities)
