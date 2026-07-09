@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07090C" />
+    <title>Offline — Running on AI</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(180deg, #0e1319 0%, #0a0d12 55%, #07090c 100%);
+        color: #e7ecf0;
+        font-family: 'Space Grotesk', system-ui, sans-serif;
+        text-align: center;
+        padding: 22px;
+      }
+      .label {
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        letter-spacing: 0.26em;
+        color: #5fd08b;
+        margin-bottom: 14px;
+      }
+      h1 {
+        font-size: 26px;
+        font-weight: 700;
+        margin: 0 0 10px;
+      }
+      p {
+        color: #8a96a3;
+        font-size: 14px;
+        line-height: 1.6;
+        max-width: 320px;
+        margin: 0 auto;
+      }
+      button {
+        margin-top: 22px;
+        background: #5fd08b;
+        color: #06210f;
+        border: none;
+        border-radius: 12px;
+        padding: 13px 24px;
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <div class="label">RUNNING ON AI</div>
+      <h1>You’re offline.</h1>
+      <p>The coach needs a connection to your server to read today’s data. Reconnect and try again.</p>
+      <button onclick="location.reload()">Retry</button>
+    </div>
+  </body>
+</html>
