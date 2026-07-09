@@ -65,6 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("login", help="interactive one-time Garmin SSO login")
 
+    sub.add_parser(
+        "login-web",
+        help="M5 web-driven login: creds as JSON on stdin, MFA handshake on stdout/stdin",
+    )
+
     fetch = sub.add_parser("fetch", help="fetch recovery metrics; print JSON to stdout")
     fetch.add_argument("--since", required=True, help="inclusive start date YYYY-MM-DD")
     fetch.add_argument("--until", default=None, help="inclusive end date YYYY-MM-DD (default: today)")
@@ -132,9 +137,55 @@ def _run_dry_fetch(since: str, until: str) -> dict:
     )
 
 
+def _emit(obj: dict) -> None:
+    """Write one protocol JSON line to stdout and flush (Go reads line-wise)."""
+    json.dump(obj, sys.stdout)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+
+def _run_login_web() -> int:
+    """M5 §7.2 protocol. stdout carries ONLY protocol JSON; creds are used
+    once and must never be echoed to stdout or stderr."""
+    line = sys.stdin.readline()
+    try:
+        creds = json.loads(line)
+        email = creds["email"]
+        password = creds["password"]
+        if not isinstance(email, str) or not isinstance(password, str) or not email or not password:
+            raise ValueError("missing fields")
+    except Exception:
+        _emit({"status": "error", "error": "bad_input"})
+        return 2
+
+    def prompt_mfa() -> str:
+        _emit({"status": "mfa_required"})
+        reply = sys.stdin.readline()
+        try:
+            code = json.loads(reply).get("code", "")
+            return code if isinstance(code, str) else ""
+        except Exception:
+            return ""
+
+    try:
+        client.GarminClient.login_web(email=email, password=password, prompt_mfa=prompt_mfa)
+    except Exception as exc:  # noqa: BLE001 — map to protocol kinds, never re-raise
+        kind = "rate_limited" if _is_rate_limited(exc) else "auth_failed"
+        # Exception text may embed the credentials — log only the type.
+        print(f"login-web failed: {type(exc).__name__}", file=sys.stderr)
+        _emit({"status": "error", "error": kind})
+        return 1
+
+    _emit({"status": "ok", "tokenstore": client.tokenstore_path()})
+    return 0
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "login-web":
+        return _run_login_web()
 
     if args.command == "login":
         try:

@@ -81,6 +81,20 @@ class GarminClient:
         g.login(tokenstore_path())
         return cls(g)
 
+    @classmethod
+    def login_web(
+        cls, email: str, password: str, prompt_mfa: Callable[[], str]
+    ) -> "GarminClient":
+        """M5 web-driven login: credentials as explicit args (never env).
+
+        Same widget+cffi login as login_interactive, but driven by the Go
+        backend over stdin/stdout (cli.py `login-web`); prompt_mfa blocks on
+        the protocol's second stdin line.
+        """
+        g = _new_garmin(email=email, password=password, prompt_mfa=prompt_mfa)
+        g.login(tokenstore_path())
+        return cls(g)
+
     # ---- verified data methods (1:1 delegation) ------------------------
     def get_sleep_data(self, cdate: str) -> dict:
         return self._g.get_sleep_data(cdate)
