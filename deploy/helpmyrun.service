@@ -6,6 +6,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# User services do NOT inherit the login-shell PATH. ~/.local/bin must be on
+# it: the claude CLI's native installer puts `claude` there (found the hard
+# way — the daily verdict silently fell back to deterministic readiness).
+Environment=PATH=%h/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
 # Set to the repo/install dir by `make install`, so relative paths in .env
 # (DB_PATH, GARMIN_TOKENSTORE, worker) resolve here.
 WorkingDirectory=__WORKINGDIR__
