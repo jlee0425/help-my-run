@@ -1,0 +1,22 @@
+[
+ {
+  "userId": 0,
+  "fromCalendarDate": "2026-07-05",
+  "toCalendarDate": "2026-07-08",
+  "calendarDate": "2026-07-05",
+  "time5K": 2000,
+  "time10K": 4000,
+  "timeHalfMarathon": 8000,
+  "timeMarathon": 20000
+ },
+ {
+  "userId": 0,
+  "fromCalendarDate": "2026-07-05",
+  "toCalendarDate": "2026-07-08",
+  "calendarDate": "2026-07-06",
+  "time5K": 2000,
+  "time10K": 4000,
+  "timeHalfMarathon": 8000,
+  "timeMarathon": 20000
+ }
+]

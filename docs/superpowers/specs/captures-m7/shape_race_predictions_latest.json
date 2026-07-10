@@ -1,0 +1,10 @@
+{
+ "userId": 0,
+ "fromCalendarDate": null,
+ "toCalendarDate": null,
+ "calendarDate": "2026-07-09",
+ "time5K": 2000,
+ "time10K": 4000,
+ "timeHalfMarathon": 8000,
+ "timeMarathon": 20000
+}

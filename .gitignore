@@ -47,3 +47,4 @@ backend/internal/webui/dist/*
 !backend/internal/webui/dist/.keep
 bin/
 web/tsconfig.tsbuildinfo
+backups/
