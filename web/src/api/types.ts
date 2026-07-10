@@ -183,6 +183,15 @@ export type FitnessMetrics = {
   is_cutback_week: boolean;
 };
 
+export type SessionInfo = {
+  id_hash: string;
+  created_at: string;
+  last_seen_at: string;
+  user_agent: string;
+  ip: string;
+  current: boolean;
+};
+
 export type AgentRunResult = {
   date: string;
   skipped: boolean;

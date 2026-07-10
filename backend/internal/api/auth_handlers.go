@@ -3,12 +3,104 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+
+	"github.com/go-chi/chi/v5"
 
 	"help-my-run/backend/internal/auth"
 )
 
 const sessionCookieMaxAge = 30 * 24 * 60 * 60 // 30 days, matches auth.sessionTTL
+
+// sessionMeta captures device info for the sessions/devices list (M6).
+// chi's RealIP middleware has already rewritten RemoteAddr when behind a proxy.
+func sessionMeta(r *http.Request) auth.SessionMeta {
+	ip := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		ip = host
+	}
+	return auth.SessionMeta{UserAgent: r.UserAgent(), IP: ip}
+}
+
+// sessionDTO is one device row. IDHash is the SHA-256 of the cookie secret —
+// exposing it grants nothing; it is the revocation key.
+type sessionDTO struct {
+	IDHash     string `json:"id_hash"`
+	CreatedAt  string `json:"created_at"`
+	LastSeenAt string `json:"last_seen_at"`
+	UserAgent  string `json:"user_agent"`
+	IP         string `json:"ip"`
+	Current    bool   `json:"current"`
+}
+
+// currentSessionHash returns the SHA-256 of the caller's session cookie, or ""
+// (bearer-token callers have no session).
+func currentSessionHash(r *http.Request) string {
+	c, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return ""
+	}
+	return auth.HashSecret(c.Value)
+}
+
+// GET /api/auth/sessions (protected) — the devices list (expired rows purged).
+func (h *handlers) listSessions(w http.ResponseWriter, r *http.Request) {
+	sessions, err := h.d.Auth.Sessions()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	current := currentSessionHash(r)
+	out := make([]sessionDTO, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, sessionDTO{
+			IDHash:     s.IDHash,
+			CreatedAt:  s.CreatedAt,
+			LastSeenAt: s.LastSeenAt,
+			UserAgent:  s.UserAgent,
+			IP:         s.CreatedIP,
+			Current:    current != "" && s.IDHash == current,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": out})
+}
+
+// DELETE /api/auth/sessions/{idHash} (protected) — revoke one device.
+// Revoking the current session is allowed (acts as logout).
+func (h *handlers) revokeSession(w http.ResponseWriter, r *http.Request) {
+	idHash := chi.URLParam(r, "idHash")
+	if len(idHash) != 64 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad session id"})
+		return
+	}
+	if err := h.d.Store.DeleteSession(idHash); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if currentSessionHash(r) == idHash {
+		setSessionCookie(w, r, "", -1)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /api/auth/sessions/revoke-others (protected, cookie callers only).
+func (h *handlers) revokeOtherSessions(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requires a session cookie"})
+		return
+	}
+	switch err := h.d.Auth.RevokeOtherSessions(c.Value); {
+	case errors.Is(err, auth.ErrUnknownSession):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requires a live session cookie"})
+		return
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 
 // GET /api/auth/state (public)
 func (h *handlers) authState(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +127,7 @@ func (h *handlers) setup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad body: " + err.Error()})
 		return
 	}
-	sid, token, err := h.d.Auth.Setup(in.Password)
+	sid, token, err := h.d.Auth.Setup(in.Password, sessionMeta(r))
 	switch {
 	case errors.Is(err, auth.ErrAlreadySetup):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "already set up"})
@@ -60,7 +152,7 @@ func (h *handlers) login(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad body: " + err.Error()})
 		return
 	}
-	sid, err := h.d.Auth.Login(in.Password)
+	sid, err := h.d.Auth.Login(in.Password, sessionMeta(r))
 	switch {
 	case errors.Is(err, auth.ErrThrottled):
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "throttled"})

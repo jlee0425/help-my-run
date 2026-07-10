@@ -18,6 +18,7 @@ import (
 	"help-my-run/backend/internal/agent"
 	"help-my-run/backend/internal/api"
 	"help-my-run/backend/internal/auth"
+	"help-my-run/backend/internal/backup"
 	"help-my-run/backend/internal/chat"
 	"help-my-run/backend/internal/coach"
 	"help-my-run/backend/internal/config"
@@ -211,6 +212,18 @@ func (p apiAgent) RunDaily(ctx context.Context, localDate string, force bool) ag
 	return p.a.RunDaily(ctx, localDate)
 }
 
+// runNightlyBackup snapshots the DB + Garmin tokenstore after the daily agent
+// run (M6). Failures are loud in the log but must never crash the agent loop.
+func runNightlyBackup(s *store.Store, cfg *config.Config) {
+	tokenstore, _ := syncpkg.ExpandHome(cfg.GarminTokenstore) // unexpanded ~ -> copy skipped
+	path, err := backup.Run(s, tokenstore, cfg.ResolvedBackupDir(), cfg.BackupKeep)
+	if err != nil {
+		log.Printf("backup: FAILED (data is NOT protected tonight): %v", err)
+		return
+	}
+	log.Printf("backup: wrote %s (keep=%d)", path, cfg.BackupKeep)
+}
+
 // runSyncOnBoot invokes the sync fn once immediately so a fresh instance pulls
 // data without waiting a full ticker interval (M0 follow-up #2). It runs in a
 // goroutine so server startup is not blocked.
@@ -283,10 +296,15 @@ func main() {
 		return scheduler.Config{Hour: hh, Minute: mm, Loc: loc}, enabled, nil
 	}
 	go scheduler.Run(ctx, scheduler.RealClock{}, scheduleProvider,
-		func(c context.Context, localDate string) {
-			res := app.Agent.RunDaily(c, localDate)
-			log.Printf("agent: date=%s skipped=%v color=%s action=%s source=%s pushed=%v",
-				res.Date, res.Skipped, res.ReadinessColor, res.Action, res.Source, res.Pushed)
+		func(c context.Context, localDate string, enabled bool) {
+			if enabled {
+				res := app.Agent.RunDaily(c, localDate)
+				log.Printf("agent: date=%s skipped=%v color=%s action=%s source=%s pushed=%v",
+					res.Date, res.Skipped, res.ReadinessColor, res.Action, res.Source, res.Pushed)
+			} else {
+				log.Printf("agent: date=%s skipped (disabled in profile); nightly backup still runs", localDate)
+			}
+			runNightlyBackup(app.Store, cfg) // M6: backup rides the cadence, agent toggle or not
 		})
 	log.Printf("agent scheduler: started (schedule re-read from profile each cycle)")
 

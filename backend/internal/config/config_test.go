@@ -20,6 +20,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 		"CLAUDE_BIN", "CLAUDE_MODEL", "IMAGE_DIR",
 		"STREAM_RECENT_WEEKS", "STREAM_FETCH_BUDGET",
 		"CHAT_HISTORY_TURNS",
+		"BACKUP_DIR", "BACKUP_KEEP",
 	}
 	for _, k := range all {
 		// t.Setenv first to register restoration of the original value on
@@ -229,5 +230,43 @@ func TestM3_3ChatConfigOverride(t *testing.T) {
 	}
 	if cfg.ChatHistoryTurns != 10 {
 		t.Errorf("ChatHistoryTurns = %d, want 10", cfg.ChatHistoryTurns)
+	}
+}
+
+func TestM6BackupConfigDefaults(t *testing.T) {
+	env := requiredEnv()
+	env["DB_PATH"] = "/srv/helpmyrun/helpmyrun.db"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.BackupKeep != 14 {
+		t.Errorf("BackupKeep = %d, want default 14", cfg.BackupKeep)
+	}
+	if cfg.BackupDir != "" {
+		t.Errorf("BackupDir = %q, want empty (resolved lazily)", cfg.BackupDir)
+	}
+	if got, want := cfg.ResolvedBackupDir(), "/srv/helpmyrun/backups"; got != want {
+		t.Errorf("ResolvedBackupDir() = %q, want %q (sibling of DB_PATH)", got, want)
+	}
+}
+
+func TestM6BackupConfigOverrides(t *testing.T) {
+	env := requiredEnv()
+	env["BACKUP_DIR"] = "/mnt/nas/hmr"
+	env["BACKUP_KEEP"] = "30"
+	setEnv(t, env)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	if cfg.BackupKeep != 30 {
+		t.Errorf("BackupKeep = %d, want 30", cfg.BackupKeep)
+	}
+	if got := cfg.ResolvedBackupDir(); got != "/mnt/nas/hmr" {
+		t.Errorf("ResolvedBackupDir() = %q, want explicit BACKUP_DIR", got)
 	}
 }

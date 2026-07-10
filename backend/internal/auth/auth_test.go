@@ -32,10 +32,10 @@ func TestSetupLifecycle(t *testing.T) {
 	if err != nil || !req {
 		t.Fatalf("SetupRequired fresh = %v,%v want true,nil", req, err)
 	}
-	if _, _, err := a.Setup("short"); !errors.Is(err, ErrWeakPassword) {
+	if _, _, err := a.Setup("short", SessionMeta{}); !errors.Is(err, ErrWeakPassword) {
 		t.Fatalf("Setup(short) = %v, want ErrWeakPassword", err)
 	}
-	sid, tok, err := a.Setup("a strong password")
+	sid, tok, err := a.Setup("a strong password", SessionMeta{})
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestSetupLifecycle(t *testing.T) {
 	if req, _ := a.SetupRequired(); req {
 		t.Fatalf("SetupRequired after setup = true")
 	}
-	if _, _, err := a.Setup("another password"); !errors.Is(err, ErrAlreadySetup) {
+	if _, _, err := a.Setup("another password", SessionMeta{}); !errors.Is(err, ErrAlreadySetup) {
 		t.Fatalf("second Setup = %v, want ErrAlreadySetup", err)
 	}
 	if !a.ValidateSession(sid) {
@@ -61,20 +61,20 @@ func TestSetupLifecycle(t *testing.T) {
 
 func TestLoginBackoffAndSessions(t *testing.T) {
 	a, now := newTestService(t)
-	if _, _, err := a.Setup("a strong password"); err != nil {
+	if _, _, err := a.Setup("a strong password", SessionMeta{}); err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
 
-	if _, err := a.Login("nope"); !errors.Is(err, ErrBadCredentials) {
+	if _, err := a.Login("nope", SessionMeta{}); !errors.Is(err, ErrBadCredentials) {
 		t.Fatalf("Login wrong = %v, want ErrBadCredentials", err)
 	}
 	// Immediately retrying after a failure is throttled (backoff starts at 2s).
-	if _, err := a.Login("a strong password"); !errors.Is(err, ErrThrottled) {
+	if _, err := a.Login("a strong password", SessionMeta{}); !errors.Is(err, ErrThrottled) {
 		t.Fatalf("Login during backoff = %v, want ErrThrottled", err)
 	}
 	// After the backoff window, correct password succeeds.
 	*now = now.Add(5 * time.Second)
-	sid, err := a.Login("a strong password")
+	sid, err := a.Login("a strong password", SessionMeta{})
 	if err != nil {
 		t.Fatalf("Login after backoff: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestLoginBackoffAndSessions(t *testing.T) {
 
 	// Logout invalidates.
 	*now = now.Add(time.Minute)
-	sid2, err := a.Login("a strong password")
+	sid2, err := a.Login("a strong password", SessionMeta{})
 	if err != nil {
 		t.Fatalf("re-login: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestLoginBackoffAndSessions(t *testing.T) {
 
 func TestChangePasswordAndRegenerate(t *testing.T) {
 	a, now := newTestService(t)
-	sid, tok, err := a.Setup("a strong password")
+	sid, tok, err := a.Setup("a strong password", SessionMeta{})
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
@@ -118,11 +118,11 @@ func TestChangePasswordAndRegenerate(t *testing.T) {
 	if err := a.ChangePassword("a strong password", "next strong password"); err != nil {
 		t.Fatalf("ChangePassword: %v", err)
 	}
-	if _, err := a.Login("a strong password"); !errors.Is(err, ErrBadCredentials) {
+	if _, err := a.Login("a strong password", SessionMeta{}); !errors.Is(err, ErrBadCredentials) {
 		t.Fatalf("old password still works")
 	}
 	*now = now.Add(5 * time.Second) // clear the failed-attempt backoff
-	if _, err := a.Login("next strong password"); err != nil {
+	if _, err := a.Login("next strong password", SessionMeta{}); err != nil {
 		t.Fatalf("new password rejected: %v", err)
 	}
 
@@ -146,5 +146,74 @@ func TestChangePasswordAndRegenerate(t *testing.T) {
 	}
 	if a.ValidateSession(sid) || a.ValidateAPIToken(newTok) {
 		t.Fatalf("credentials survive reset")
+	}
+}
+
+// M6: revoke-others must refuse an unknown current session instead of deleting
+// every live session (a stale cookie on a bearer-authenticated request).
+func TestRevokeOtherSessionsUnknownCurrentRefuses(t *testing.T) {
+	a, now := newTestService(t)
+	sid, _, err := a.Setup("a strong password", SessionMeta{})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	*now = now.Add(time.Minute)
+	sid2, err := a.Login("a strong password", SessionMeta{})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	if err := a.RevokeOtherSessions("not-a-live-session-id"); !errors.Is(err, ErrUnknownSession) {
+		t.Fatalf("RevokeOtherSessions(stale) = %v, want ErrUnknownSession", err)
+	}
+	// Both real sessions must have survived.
+	if !a.ValidateSession(sid) || !a.ValidateSession(sid2) {
+		t.Fatal("live sessions were deleted by a stale-cookie revoke-others")
+	}
+
+	// The happy path still works: sid revokes sid2.
+	if err := a.RevokeOtherSessions(sid); err != nil {
+		t.Fatalf("RevokeOtherSessions(live): %v", err)
+	}
+	if !a.ValidateSession(sid) || a.ValidateSession(sid2) {
+		t.Fatal("revoke-others kept the wrong sessions")
+	}
+}
+
+// M6: dead devices must not haunt the Settings list — Sessions() purges
+// expired rows instead of listing them forever.
+func TestSessionsPurgesExpired(t *testing.T) {
+	a, now := newTestService(t)
+	sid, _, err := a.Setup("a strong password", SessionMeta{UserAgent: "fresh"})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	*now = now.Add(time.Minute)
+	if _, err := a.Login("a strong password", SessionMeta{UserAgent: "doomed"}); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	// Refresh the first session at +31d so only the second one is expired
+	// (sessionTTL is 30 days, sliding).
+	*now = now.Add(29 * 24 * time.Hour)
+	if !a.ValidateSession(sid) {
+		t.Fatal("first session should still be valid at day 29")
+	}
+	*now = now.Add(2 * 24 * time.Hour)
+
+	sessions, err := a.Sessions()
+	if err != nil {
+		t.Fatalf("Sessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].UserAgent != "fresh" {
+		t.Fatalf("Sessions = %+v, want only the refreshed one", sessions)
+	}
+	// And the expired row is gone from the store, not just filtered.
+	raw, err := a.Store.ListSessions()
+	if err != nil {
+		t.Fatalf("ListSessions: %v", err)
+	}
+	if len(raw) != 1 {
+		t.Fatalf("store rows after purge = %d, want 1", len(raw))
 	}
 }

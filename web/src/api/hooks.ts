@@ -13,6 +13,7 @@ import type {
   Profile,
   ProgressReport,
   RecoveryDay,
+  SessionInfo,
   Status,
   StreamAnalysis,
   Today,
@@ -212,6 +213,34 @@ export function useProfile() {
         throw e;
       }
     },
+  });
+}
+
+// --- sessions / devices (M6) ---
+
+export function useSessions() {
+  return useQuery({
+    queryKey: ['sessions'],
+    queryFn: async () => (await apiGet<{ sessions: SessionInfo[] }>('/api/auth/sessions')).sessions,
+  });
+}
+
+export function useRevokeSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (idHash: string) => apiDelete<void>(`/api/auth/sessions/${idHash}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['sessions'] });
+      void qc.invalidateQueries({ queryKey: ['auth'] }); // revoking self = logout
+    },
+  });
+}
+
+export function useRevokeOtherSessions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<void>('/api/auth/sessions/revoke-others'),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['sessions'] }),
   });
 }
 

@@ -3,6 +3,8 @@
 package config
 
 import (
+	"path/filepath"
+
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
@@ -40,6 +42,20 @@ type Config struct {
 
 	// M3.3: chat rolling-history turns sent per claude -p call.
 	ChatHistoryTurns int `envconfig:"CHAT_HISTORY_TURNS" default:"6"`
+
+	// M6: nightly backups. BackupDir's real default depends on DB_PATH, so it
+	// stays empty here and resolves via ResolvedBackupDir.
+	BackupDir  string `envconfig:"BACKUP_DIR"`
+	BackupKeep int    `envconfig:"BACKUP_KEEP" default:"14"`
+}
+
+// ResolvedBackupDir returns BACKUP_DIR, defaulting to a backups/ dir next to
+// the database file.
+func (c *Config) ResolvedBackupDir() string {
+	if c.BackupDir != "" {
+		return c.BackupDir
+	}
+	return filepath.Join(filepath.Dir(c.DBPath), "backups")
 }
 
 // Load reads .env (if present) into the process environment, then maps env

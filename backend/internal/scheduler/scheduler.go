@@ -54,13 +54,16 @@ type ConfigProvider func() (cfg Config, enabled bool, err error)
 const errRetry = time.Minute
 
 // Run blocks until ctx is cancelled, invoking fn once per scheduled local day.
-// fn receives ctx and the local date (YYYY-MM-DD) it fired for. The schedule is
-// re-read via `next` on EVERY iteration, so changing daily_run_time/timezone
-// recomputes the next fire on the following cycle and toggling agent_enabled=false
-// suppresses fn WITHOUT a restart. An in-process guard (lastFired) prevents
-// same-process double fires; the PERSISTENT once-per-day guard is owned by fn
-// (agent.RunDaily checks agent_runs).
-func Run(ctx context.Context, clk Clock, next ConfigProvider, fn func(ctx context.Context, localDate string)) {
+// fn receives ctx, the local date (YYYY-MM-DD) it fired for, and whether the
+// agent is enabled. The schedule is re-read via `next` on EVERY iteration, so
+// changing daily_run_time/timezone recomputes the next fire on the following
+// cycle and toggling agent_enabled applies WITHOUT a restart. fn ALWAYS fires
+// on schedule — enabled is passed through so fn can skip just the agent while
+// work that rides the same cadence (the M6 nightly backup) still runs. An
+// in-process guard (lastFired) prevents same-process double fires; the
+// PERSISTENT once-per-day guard is owned by fn (agent.RunDaily checks
+// agent_runs).
+func Run(ctx context.Context, clk Clock, next ConfigProvider, fn func(ctx context.Context, localDate string, enabled bool)) {
 	var lastFired string
 	for {
 		cfg, enabled, err := next()
@@ -87,14 +90,10 @@ func Run(ctx context.Context, clk Clock, next ConfigProvider, fn func(ctx contex
 			stop()
 			return
 		case <-c:
-			if !enabled {
-				// Agent disabled in the profile: skip this fire, re-read next cycle.
-				continue
-			}
 			localDate := clk.Now().In(cfg.Loc).Format("2006-01-02")
 			if localDate != lastFired {
 				lastFired = localDate
-				fn(ctx, localDate)
+				fn(ctx, localDate, enabled)
 			}
 		}
 	}

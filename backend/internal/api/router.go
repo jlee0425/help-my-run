@@ -126,6 +126,9 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/logout", h.logout)
 		r.Post("/api/auth/password", h.changePassword)
 		r.Post("/api/auth/token", h.regenerateToken)
+		r.Get("/api/auth/sessions", h.listSessions)
+		r.Delete("/api/auth/sessions/{idHash}", h.revokeSession)
+		r.Post("/api/auth/sessions/revoke-others", h.revokeOtherSessions)
 
 		// M5: Garmin web login.
 		r.Get("/api/garmin/status", h.garminStatus)

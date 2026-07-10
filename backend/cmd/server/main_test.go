@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -204,4 +205,40 @@ func TestRunSyncOnBoot(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("runSyncOnBoot did not invoke the sync fn")
 	}
+}
+
+// M6: the nightly backup rides the agent scheduler callback — it must write a
+// snapshot when healthy and never panic when the backup fails.
+func TestRunNightlyBackupWritesSnapshotAndSurvivesFailure(t *testing.T) {
+	cfg := &config.Config{
+		DBPath:           filepath.Join(t.TempDir(), "wire.db"),
+		Port:             "8080",
+		PythonBin:        "/bin/cat",
+		WorkerScript:     "/dev/null",
+		GarminTokenstore: filepath.Join(t.TempDir(), "no-tokenstore-yet"),
+		BackupDir:        filepath.Join(t.TempDir(), "backups"),
+		BackupKeep:       14,
+	}
+	app, err := Wire(cfg)
+	if err != nil {
+		t.Fatalf("Wire error = %v", err)
+	}
+	t.Cleanup(func() { _ = app.Store.Close() })
+
+	runNightlyBackup(app.Store, cfg)
+	matches, err := filepath.Glob(filepath.Join(cfg.BackupDir, "helpmyrun-*.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("snapshots after backup = %v, want exactly one", matches)
+	}
+
+	// Point the backup dir at a plain file: Run errors, the loop must survive.
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.BackupDir = blocked
+	runNightlyBackup(app.Store, cfg) // must not panic
 }

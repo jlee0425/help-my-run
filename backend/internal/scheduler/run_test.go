@@ -53,7 +53,7 @@ func TestRunFiresOncePerDay(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		Run(ctx, clk, staticProvider(cfg, true), func(_ context.Context, d string) {
+		Run(ctx, clk, staticProvider(cfg, true), func(_ context.Context, d string, _ bool) {
 			mu.Lock()
 			fires = append(fires, d)
 			mu.Unlock()
@@ -82,39 +82,45 @@ func TestRunFiresOncePerDay(t *testing.T) {
 	}
 }
 
-func TestRunDisabledDoesNotFire(t *testing.T) {
+// M6: the nightly backup rides the scheduler callback, so fn must STILL fire
+// on schedule when the agent is disabled — with enabled=false so fn can skip
+// just the agent.
+func TestRunDisabledStillFiresWithEnabledFalse(t *testing.T) {
 	utc := time.UTC
 	clk := &fakeClock{now: time.Date(2026, 6, 20, 3, 0, 0, 0, utc), ch: make(chan time.Time)}
 	cfg := Config{Hour: 5, Minute: 30, Loc: utc}
 
 	var mu sync.Mutex
-	fired := false
-	// provider reports agent_enabled=false; the timer fires but fn must NOT run.
+	var enableds []bool
+	step := make(chan struct{}, 8)
 	prov := func() (Config, bool, error) { return cfg, false, nil }
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		Run(ctx, clk, prov, func(context.Context, string) {
+		Run(ctx, clk, prov, func(_ context.Context, _ string, enabled bool) {
 			mu.Lock()
-			fired = true
+			enableds = append(enableds, enabled)
 			mu.Unlock()
+			step <- struct{}{}
 		})
 		close(done)
 	}()
 
 	clk.setNow(time.Date(2026, 6, 20, 5, 30, 0, 0, utc))
-	clk.ch <- clk.Now() // delivers the fire; disabled provider must suppress fn
+	clk.ch <- clk.Now()
+	<-step // day 1 fires despite disabled
 	clk.setNow(time.Date(2026, 6, 21, 5, 30, 0, 0, utc))
-	clk.ch <- clk.Now() // next cycle, still disabled
+	clk.ch <- clk.Now()
+	<-step // day 2 fires despite disabled
 
 	cancel()
 	<-done
 
 	mu.Lock()
 	defer mu.Unlock()
-	if fired {
-		t.Fatal("fn fired while agent_enabled=false, want suppressed")
+	if len(enableds) != 2 || enableds[0] || enableds[1] {
+		t.Fatalf("fires(enabled) = %v, want [false false] (fn always fires, agent skip is fn's job)", enableds)
 	}
 }
 
@@ -138,7 +144,7 @@ func TestRunRecomputesNextFireWhenTimeChanges(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		Run(ctx, clk, prov, func(context.Context, string) {})
+		Run(ctx, clk, prov, func(context.Context, string, bool) {})
 		close(done)
 	}()
 
@@ -175,7 +181,7 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		Run(ctx, clk, staticProvider(cfg, true), func(context.Context, string) {})
+		Run(ctx, clk, staticProvider(cfg, true), func(context.Context, string, bool) {})
 		close(done)
 	}()
 	cancel()

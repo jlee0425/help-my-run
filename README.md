@@ -57,19 +57,66 @@ Then it's live: **Today** (readiness verdict + session), **Trends** (aerobic eng
 - **iPhone:** Share → *Add to Home Screen*. (iOS only allows Web Push for installed PWAs, 16.4+.)
 - Enable **morning notifications** in the wizard's last step or Settings → Notifications — the daily agent pushes its verdict when it runs (default 06:00, configurable in Settings).
 
-### HTTPS note
+> **Heads up:** install + Web Push need HTTPS (localhost is exempt). The [Tailscale one-liner](#remote-access-tailscale) below gives your phone private HTTPS anywhere; plain `http://<lan-ip>:8080` still works as a normal website on your LAN (no install/push).
 
-Service workers, installation, and push need HTTPS (localhost is exempt). The simplest options:
+## Run it as a service
+
+Keep the coach running unattended — it wakes at 06:00, syncs Garmin, backs up, and pushes your briefing whether or not you're logged in. `make install` sets up a **user-level** systemd service (no root, no Docker):
 
 ```bash
-# Tailscale (easiest — private HTTPS on your tailnet):
-tailscale serve https / http://localhost:8080
+make install
+```
 
-# Caddy (public domain):
+That builds the binary, copies it to `~/.local/bin/helpmyrun`, installs the unit at `~/.config/systemd/user/helpmyrun.service` (with this repo baked in as `WorkingDirectory`, so relative `.env` paths keep resolving), and reloads systemd. Then enable it — `make install` prints these:
+
+```bash
+systemctl --user enable --now helpmyrun   # start it now, and on every boot
+loginctl enable-linger $USER              # ...even when you're not logged in
+```
+
+Logs go to journald:
+
+```bash
+journalctl --user -u helpmyrun -f
+```
+
+### Remote access (Tailscale)
+
+Reach the app from your phone anywhere — private HTTPS on your tailnet, nothing exposed to the internet:
+
+```bash
+tailscale serve https / http://localhost:8080
+```
+
+This is also what enables PWA install + Web Push off your LAN (both need HTTPS; localhost is exempt). Public domain instead? Caddy is a one-liner:
+
+```bash
 # Caddyfile:  yourdomain.example { reverse_proxy localhost:8080 }
 ```
 
-Plain `http://<lan-ip>:8080` still works as a normal website (no install/push).
+### Backups & restore
+
+The nightly agent writes a backup right after each daily run — same cadence, no extra timers. Snapshots land in `BACKUP_DIR` (default: a `backups/` dir next to `DB_PATH`):
+
+- `helpmyrun-YYYY-MM-DD.db` — a consistent SQLite snapshot (`VACUUM INTO`).
+- `tokenstore-YYYY-MM-DD/` — a copy of the Garmin OAuth tokenstore.
+
+The newest `BACKUP_KEEP` (default 14) of each are kept; older ones are pruned. Override either in `.env`:
+
+```bash
+# BACKUP_DIR=/mnt/backup/helpmyrun   # default: <dir of DB_PATH>/backups
+# BACKUP_KEEP=14
+```
+
+To restore a snapshot, stop the service, copy the files back, start again:
+
+```bash
+systemctl --user stop helpmyrun
+rm -f "$DB_PATH"-wal "$DB_PATH"-shm     # stale WAL would be replayed over the snapshot
+cp backups/helpmyrun-2026-07-09.db "$DB_PATH"                 # over your DB_PATH
+cp -r backups/tokenstore-2026-07-09/. "$GARMIN_TOKENSTORE"/   # over the tokenstore
+systemctl --user start helpmyrun
+```
 
 ## Development
 

@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: run-backend run-web build build-web garmin-login sync test
+.PHONY: run-backend run-web build build-web garmin-login sync test install
 
 # Relative paths in .env are resolved against the REPO ROOT here (the server
 # runs from backend/, which used to break them — the old "absolute paths only"
@@ -46,3 +46,23 @@ test:
 	cd backend && go test ./...
 	cd garmin-worker && . .venv/bin/activate && python -m pytest tests -q
 	cd web && npm test
+
+# Install as a user-level systemd service (no root). Builds the binary, drops
+# it in ~/.local/bin, installs the unit under ~/.config/systemd/user with the
+# repo dir baked in as WorkingDirectory, reloads the user manager, then prints
+# the enable one-liners (left to you so nothing is started behind your back).
+install: build
+	mkdir -p $(HOME)/.local/bin
+	cp bin/helpmyrun $(HOME)/.local/bin/helpmyrun
+	mkdir -p $(HOME)/.config/systemd/user
+	sed 's|__WORKINGDIR__|$(CURDIR)|g' deploy/helpmyrun.service > $(HOME)/.config/systemd/user/helpmyrun.service
+	systemctl --user daemon-reload
+	@echo
+	@echo "Installed binary -> $(HOME)/.local/bin/helpmyrun"
+	@echo "Installed unit   -> $(HOME)/.config/systemd/user/helpmyrun.service"
+	@echo
+	@echo "Enable it (starts now + on every boot):"
+	@echo "    systemctl --user enable --now helpmyrun"
+	@echo "    loginctl enable-linger $$USER"
+	@echo
+	@echo "Logs: journalctl --user -u helpmyrun -f"

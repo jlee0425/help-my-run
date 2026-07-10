@@ -310,3 +310,111 @@ func TestSyncErrorIsNotASilent200(t *testing.T) {
 		t.Errorf("garmin source = %+v, want embedded error preserved", body.Garmin)
 	}
 }
+
+// M6: devices list + revocation.
+func TestSessionsListAndRevocation(t *testing.T) {
+	h, _, _ := newFreshServer(t)
+
+	// Session A: from setup (a phone-ish UA).
+	rec := doJSON(t, h, http.MethodPost, "/api/setup", `{"password":"a strong password"}`, func(r *http.Request) {
+		r.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0)")
+	})
+	ckA := sessionCookie(t, rec)
+
+	// Session B: a second login (desktop UA). Wait out the login backoff-free path.
+	rec = doJSON(t, h, http.MethodPost, "/api/login", `{"password":"a strong password"}`, func(r *http.Request) {
+		r.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Firefox/128.0")
+	})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("second login = %d", rec.Code)
+	}
+	ckB := sessionCookie(t, rec)
+
+	// List from B: two sessions, B current, UAs recorded.
+	rec = doJSON(t, h, http.MethodGet, "/api/auth/sessions", "", func(r *http.Request) { r.AddCookie(ckB) })
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list = %d (%s)", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Sessions []sessionDTO `json:"sessions"`
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	if len(out.Sessions) != 2 {
+		t.Fatalf("sessions = %d, want 2", len(out.Sessions))
+	}
+	var currentHash, otherHash string
+	for _, s := range out.Sessions {
+		if s.UserAgent == "" || s.CreatedAt == "" {
+			t.Errorf("session missing meta: %+v", s)
+		}
+		if s.Current {
+			currentHash = s.IDHash
+		} else {
+			otherHash = s.IDHash
+		}
+	}
+	if currentHash == "" || otherHash == "" {
+		t.Fatalf("current/other not distinguished: %+v", out.Sessions)
+	}
+
+	// Revoke A from B: A dies, B lives.
+	rec = doJSON(t, h, http.MethodDelete, "/api/auth/sessions/"+otherHash, "", func(r *http.Request) { r.AddCookie(ckB) })
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke = %d", rec.Code)
+	}
+	if rec := doJSON(t, h, http.MethodGet, "/api/status", "", func(r *http.Request) { r.AddCookie(ckA) }); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked session A still works = %d", rec.Code)
+	}
+	if rec := doJSON(t, h, http.MethodGet, "/api/status", "", func(r *http.Request) { r.AddCookie(ckB) }); rec.Code != http.StatusOK {
+		t.Fatalf("session B collateral damage = %d", rec.Code)
+	}
+
+	// Recreate a third session, then revoke-others from B: only B survives.
+	rec = doJSON(t, h, http.MethodPost, "/api/login", `{"password":"a strong password"}`, nil)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("third login = %d", rec.Code)
+	}
+	ckC := sessionCookie(t, rec)
+	rec = doJSON(t, h, http.MethodPost, "/api/auth/sessions/revoke-others", "", func(r *http.Request) { r.AddCookie(ckB) })
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("revoke-others = %d", rec.Code)
+	}
+	if rec := doJSON(t, h, http.MethodGet, "/api/status", "", func(r *http.Request) { r.AddCookie(ckC) }); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("session C survived revoke-others = %d", rec.Code)
+	}
+	if rec := doJSON(t, h, http.MethodGet, "/api/status", "", func(r *http.Request) { r.AddCookie(ckB) }); rec.Code != http.StatusOK {
+		t.Fatalf("session B died in revoke-others = %d", rec.Code)
+	}
+
+	// Bad id hash: 400.
+	if rec := doJSON(t, h, http.MethodDelete, "/api/auth/sessions/short", "", func(r *http.Request) { r.AddCookie(ckB) }); rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad id = %d, want 400", rec.Code)
+	}
+}
+
+// M6: a stale cookie on a bearer-authenticated revoke-others must be a 400,
+// not a mass sign-out of every live device.
+func TestRevokeOthersWithStaleCookieIs400(t *testing.T) {
+	h, _, _ := newFreshServer(t)
+	rec := doJSON(t, h, http.MethodPost, "/api/setup", `{"password":"a strong password"}`, nil)
+	ck := sessionCookie(t, rec)
+	var setupBody struct {
+		APIToken string `json:"api_token"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &setupBody); err != nil || setupBody.APIToken == "" {
+		t.Fatalf("setup response lacked api_token: %v (%s)", err, rec.Body.String())
+	}
+
+	stale := &http.Cookie{Name: ck.Name, Value: "long-dead-session-value"}
+	rec = doJSON(t, h, http.MethodPost, "/api/auth/sessions/revoke-others", "", func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+setupBody.APIToken)
+		r.AddCookie(stale)
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("revoke-others with stale cookie = %d, want 400", rec.Code)
+	}
+	// The real session must have survived.
+	if rec := doJSON(t, h, http.MethodGet, "/api/status", "", func(r *http.Request) { r.AddCookie(ck) }); rec.Code != http.StatusOK {
+		t.Fatalf("live session killed by stale-cookie revoke-others = %d", rec.Code)
+	}
+}

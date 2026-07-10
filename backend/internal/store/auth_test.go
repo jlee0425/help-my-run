@@ -44,7 +44,7 @@ func TestSessionsLifecycle(t *testing.T) {
 	if _, err := s.GetSession("abc"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetSession absent = %v, want ErrNotFound", err)
 	}
-	if err := s.InsertSession("abc", "2026-07-09T00:00:00Z", "2026-08-08T00:00:00Z"); err != nil {
+	if err := s.InsertSession("abc", "2026-07-09T00:00:00Z", "2026-08-08T00:00:00Z", "test-ua", "127.0.0.1"); err != nil {
 		t.Fatalf("InsertSession: %v", err)
 	}
 	sess, err := s.GetSession("abc")
@@ -62,7 +62,7 @@ func TestSessionsLifecycle(t *testing.T) {
 	if sess.LastSeenAt != "2026-07-10T00:00:00Z" || sess.ExpiresAt != "2026-08-09T00:00:00Z" {
 		t.Fatalf("after touch = %+v", sess)
 	}
-	if err := s.InsertSession("def", "2026-07-09T00:00:00Z", "2026-08-08T00:00:00Z"); err != nil {
+	if err := s.InsertSession("def", "2026-07-09T00:00:00Z", "2026-08-08T00:00:00Z", "test-ua", "127.0.0.1"); err != nil {
 		t.Fatalf("InsertSession 2: %v", err)
 	}
 	if err := s.DeleteSession("abc"); err != nil {

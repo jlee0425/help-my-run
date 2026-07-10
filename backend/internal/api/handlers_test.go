@@ -21,7 +21,7 @@ const testToken = "test-token"
 func testAuth(t *testing.T, s *store.Store) *auth.Service {
 	t.Helper()
 	a := auth.New(s)
-	if _, _, err := a.Setup("test-password-123"); err != nil && !errors.Is(err, auth.ErrAlreadySetup) {
+	if _, _, err := a.Setup("test-password-123", auth.SessionMeta{}); err != nil && !errors.Is(err, auth.ErrAlreadySetup) {
 		t.Fatalf("auth setup: %v", err)
 	}
 	if err := s.SetSetting(store.SettingAPITokenHash, auth.HashSecret(testToken)); err != nil {

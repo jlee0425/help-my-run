@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router';
 import { changePassword, regenerateToken } from '../api/auth';
 import {
   useClaudeStatus,
+  useRevokeOtherSessions,
+  useRevokeSession,
+  useSessions,
   useClaudeTokenDelete,
   useClaudeTokenSet,
   useGarminDisconnect,
@@ -13,6 +16,7 @@ import {
   useSync,
   useUpdateProfile,
 } from '../api/hooks';
+import { describeUA } from '../lib/devices';
 import { pushEnabled, pushSupported, sendTestPush, subscribePush, unsubscribePush } from '../lib/push';
 import { MonoLabel, Toggle } from '../ui/kit';
 
@@ -321,6 +325,100 @@ function SyncCard() {
   );
 }
 
+function DevicesBlock() {
+  const { data: sessions, error: sessionsError } = useSessions();
+  const revoke = useRevokeSession();
+  const revokeOthers = useRevokeOtherSessions();
+
+  if (sessionsError) {
+    return (
+      <div style={{ borderTop: '1px solid var(--hairline)', marginTop: 16, paddingTop: 16 }}>
+        <div style={{ fontSize: 14, color: 'var(--text-2)' }}>Devices</div>
+        <div className="error-line" style={{ marginTop: 8 }}>
+          Devices unavailable: {(sessionsError as Error).message}
+        </div>
+      </div>
+    );
+  }
+  if (!sessions || sessions.length === 0) return null;
+  const others = sessions.filter((s) => !s.current).length;
+
+  return (
+    <div style={{ borderTop: '1px solid var(--hairline)', marginTop: 16, paddingTop: 16 }}>
+      <div style={{ fontSize: 14, color: 'var(--text-2)' }}>Devices</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+        {sessions.map((s) => (
+          <div
+            key={s.id_hash}
+            className="card--subtle"
+            style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10 }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, color: 'var(--text)' }}>
+                {describeUA(s.user_agent)}
+                {s.current && (
+                  <span
+                    style={{
+                      marginLeft: 8,
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      letterSpacing: '.1em',
+                      color: 'var(--green)',
+                      background: 'var(--green-tint)',
+                      borderRadius: 8,
+                      padding: '2px 7px',
+                    }}
+                  >
+                    THIS DEVICE
+                  </span>
+                )}
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--faint)', marginTop: 3 }}>
+                {s.ip && `${s.ip} · `}ADDED {new Date(s.created_at).toLocaleDateString()} · LAST SEEN{' '}
+                {new Date(s.last_seen_at).toLocaleString()}
+              </div>
+            </div>
+            {!s.current && (
+              <button
+                className="btn-secondary"
+                style={{ padding: '6px 12px', fontSize: 12, color: 'var(--red)' }}
+                disabled={revoke.isPending}
+                aria-label={`Revoke ${describeUA(s.user_agent)}`}
+                onClick={() => revoke.mutate(s.id_hash)}
+              >
+                Revoke
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {others > 0 && (
+        <button
+          className="btn-secondary"
+          style={{ marginTop: 10 }}
+          disabled={revokeOthers.isPending}
+          onClick={() => {
+            if (window.confirm('Sign out everywhere else? Other devices will need the password again.'))
+              revokeOthers.mutate();
+          }}
+        >
+          Sign out everywhere else
+        </button>
+      )}
+      {revoke.error && (
+        <div className="error-line" style={{ marginTop: 8 }}>
+          {(revoke.error as Error).message}
+        </div>
+      )}
+      {revokeOthers.error && (
+        <div className="error-line" style={{ marginTop: 8 }}>
+          {(revokeOthers.error as Error).message}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SecurityCard() {
   const logout = useLogout();
   const [current, setCurrent] = useState('');
@@ -409,6 +507,8 @@ function SecurityCard() {
           Regenerate token
         </button>
       </div>
+
+      <DevicesBlock />
 
       <div style={{ borderTop: '1px solid var(--hairline)', marginTop: 16, paddingTop: 16 }}>
         <button

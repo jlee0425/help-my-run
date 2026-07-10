@@ -16,12 +16,15 @@ const (
 )
 
 // Session is one sessions row (owner login). IDHash is the SHA-256 hex of the
-// cookie value; the plaintext session id is never stored.
+// cookie value; the plaintext session id is never stored. UserAgent/CreatedIP
+// exist so the owner can recognize devices in Settings (M6).
 type Session struct {
 	IDHash     string
 	CreatedAt  string
 	LastSeenAt string
 	ExpiresAt  string
+	UserAgent  string
+	CreatedIP  string
 }
 
 // GetSetting returns the app_settings value for key, or ErrNotFound.
@@ -54,11 +57,11 @@ func (s *Store) DeleteSetting(key string) error {
 }
 
 // InsertSession stores a new session (last_seen_at = created_at).
-func (s *Store) InsertSession(idHash, createdAt, expiresAt string) error {
+func (s *Store) InsertSession(idHash, createdAt, expiresAt, userAgent, createdIP string) error {
 	_, err := s.DB.Exec(`
-		INSERT INTO sessions (id_hash, created_at, last_seen_at, expires_at)
-		VALUES (?, ?, ?, ?)`,
-		idHash, createdAt, createdAt, expiresAt)
+		INSERT INTO sessions (id_hash, created_at, last_seen_at, expires_at, user_agent, created_ip)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		idHash, createdAt, createdAt, expiresAt, userAgent, createdIP)
 	return err
 }
 
@@ -66,9 +69,10 @@ func (s *Store) InsertSession(idHash, createdAt, expiresAt string) error {
 func (s *Store) GetSession(idHash string) (Session, error) {
 	var sess Session
 	err := s.DB.QueryRow(`
-		SELECT id_hash, created_at, last_seen_at, expires_at
+		SELECT id_hash, created_at, last_seen_at, expires_at, user_agent, created_ip
 		FROM sessions WHERE id_hash = ?`, idHash).
-		Scan(&sess.IDHash, &sess.CreatedAt, &sess.LastSeenAt, &sess.ExpiresAt)
+		Scan(&sess.IDHash, &sess.CreatedAt, &sess.LastSeenAt, &sess.ExpiresAt,
+			&sess.UserAgent, &sess.CreatedIP)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -76,6 +80,27 @@ func (s *Store) GetSession(idHash string) (Session, error) {
 		return Session{}, err
 	}
 	return sess, nil
+}
+
+// ListSessions returns all sessions, most-recently-seen first (Settings devices).
+func (s *Store) ListSessions() ([]Session, error) {
+	rows, err := s.DB.Query(`
+		SELECT id_hash, created_at, last_seen_at, expires_at, user_agent, created_ip
+		FROM sessions ORDER BY last_seen_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Session, 0)
+	for rows.Next() {
+		var sess Session
+		if err := rows.Scan(&sess.IDHash, &sess.CreatedAt, &sess.LastSeenAt, &sess.ExpiresAt,
+			&sess.UserAgent, &sess.CreatedIP); err != nil {
+			return nil, err
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
 }
 
 // TouchSession updates the sliding-expiry bookkeeping for a session.

@@ -18,6 +18,7 @@ var (
 	ErrWeakPassword   = errors.New("auth: password must be at least 8 characters")
 	ErrBadCredentials = errors.New("auth: bad credentials")
 	ErrThrottled      = errors.New("auth: too many attempts")
+	ErrUnknownSession = errors.New("auth: unknown session")
 )
 
 const (
@@ -25,6 +26,13 @@ const (
 	sessionTTL     = 30 * 24 * time.Hour
 	maxBackoff     = 60 * time.Second
 )
+
+// SessionMeta is where a session came from — recorded so the owner can
+// recognize devices in Settings (M6). Zero value is fine for scripts/tests.
+type SessionMeta struct {
+	UserAgent string
+	IP        string
+}
 
 // Service implements owner auth against the store. Now is injectable for tests
 // (nil -> time.Now).
@@ -63,7 +71,7 @@ func (a *Service) SetupRequired() (bool, error) {
 
 // Setup sets the owner password (first run only), returning a fresh session id
 // and the plaintext API token (displayed once).
-func (a *Service) Setup(password string) (sessionID, apiToken string, err error) {
+func (a *Service) Setup(password string, meta SessionMeta) (sessionID, apiToken string, err error) {
 	req, err := a.SetupRequired()
 	if err != nil {
 		return "", "", err
@@ -85,7 +93,7 @@ func (a *Service) Setup(password string) (sessionID, apiToken string, err error)
 	if err := a.Store.SetSetting(store.SettingAPITokenHash, tokenHash); err != nil {
 		return "", "", err
 	}
-	sessionID, err = a.newSession()
+	sessionID, err = a.newSession(meta)
 	if err != nil {
 		return "", "", err
 	}
@@ -94,7 +102,7 @@ func (a *Service) Setup(password string) (sessionID, apiToken string, err error)
 
 // Login verifies the password and mints a session. Failures feed an in-memory
 // exponential backoff (2^n seconds, capped at 60s).
-func (a *Service) Login(password string) (string, error) {
+func (a *Service) Login(password string, meta SessionMeta) (string, error) {
 	a.mu.Lock()
 	if a.now().Before(a.nextAllowed) {
 		a.mu.Unlock()
@@ -124,18 +132,70 @@ func (a *Service) Login(password string) (string, error) {
 	a.failures = 0
 	a.nextAllowed = time.Time{}
 	a.mu.Unlock()
-	return a.newSession()
+	return a.newSession(meta)
 }
 
 // newSession mints and persists a session, returning the plaintext id.
-func (a *Service) newSession() (string, error) {
+func (a *Service) newSession(meta SessionMeta) (string, error) {
 	id, idHash := NewSecret("")
 	now := a.now().UTC()
 	if err := a.Store.InsertSession(idHash,
-		now.Format(time.RFC3339), now.Add(sessionTTL).Format(time.RFC3339)); err != nil {
+		now.Format(time.RFC3339), now.Add(sessionTTL).Format(time.RFC3339),
+		meta.UserAgent, meta.IP); err != nil {
 		return "", err
 	}
 	return id, nil
+}
+
+// Sessions returns all live sessions for the Settings devices list, purging
+// expired rows first — devices that never came back would otherwise linger
+// forever (ValidateSession only deletes the session it is handed).
+func (a *Service) Sessions() ([]store.Session, error) {
+	sessions, err := a.Store.ListSessions()
+	if err != nil {
+		return nil, err
+	}
+	now := a.now().UTC().Format(time.RFC3339)
+	live := sessions[:0]
+	for _, s := range sessions {
+		if s.ExpiresAt <= now {
+			if err := a.Store.DeleteSession(s.IDHash); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		live = append(live, s)
+	}
+	return live, nil
+}
+
+// RevokeOtherSessions deletes every session except the one for currentID. An
+// unknown currentID (stale cookie on a bearer-authenticated request) returns
+// ErrUnknownSession instead of deleting every live session.
+func (a *Service) RevokeOtherSessions(currentID string) error {
+	current := HashSecret(currentID)
+	sessions, err := a.Store.ListSessions()
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, s := range sessions {
+		if s.IDHash == current {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrUnknownSession
+	}
+	for _, s := range sessions {
+		if s.IDHash != current {
+			if err := a.Store.DeleteSession(s.IDHash); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // ValidateSession reports whether sessionID is a live session; valid sessions
