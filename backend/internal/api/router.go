@@ -96,6 +96,10 @@ type Deps struct {
 
 	// M5: Web Push (nil disables /api/push/*).
 	Push Push
+
+	// M6.5: demo mode — auth bypassed (every request is the owner),
+	// credential-bearing endpoints return 409, auth/state advertises demo.
+	Demo bool
 }
 
 // Push is the Web Push seam (*webpush.Service satisfies it).
@@ -120,42 +124,58 @@ func NewRouter(d Deps) http.Handler {
 	r.Post("/api/setup", h.setup)
 	r.Post("/api/login", h.login)
 
-	// Protected (session cookie OR bearer API token).
+	// demoGuard 409s endpoints that need real credentials when in demo mode.
+	demoGuard := func(next http.HandlerFunc) http.HandlerFunc {
+		if !d.Demo {
+			return next
+		}
+		return func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusConflict,
+				map[string]string{"error": "demo mode: this action needs a real instance"})
+		}
+	}
+
+	// Protected (session cookie OR bearer API token; demo = always the owner).
 	r.Group(func(r chi.Router) {
-		r.Use(RequireAuth(d.Auth))
+		if !d.Demo {
+			r.Use(RequireAuth(d.Auth))
+		}
 		r.Post("/api/logout", h.logout)
-		r.Post("/api/auth/password", h.changePassword)
-		r.Post("/api/auth/token", h.regenerateToken)
+		r.Post("/api/auth/password", demoGuard(h.changePassword))
+		r.Post("/api/auth/token", demoGuard(h.regenerateToken))
 		r.Get("/api/auth/sessions", h.listSessions)
 		r.Delete("/api/auth/sessions/{idHash}", h.revokeSession)
 		r.Post("/api/auth/sessions/revoke-others", h.revokeOtherSessions)
 
 		// M5: Garmin web login.
 		r.Get("/api/garmin/status", h.garminStatus)
-		r.Post("/api/garmin/login", h.garminLogin)
-		r.Post("/api/garmin/login/mfa", h.garminLoginMFA)
-		r.Post("/api/garmin/disconnect", h.garminDisconnect)
+		r.Post("/api/garmin/login", demoGuard(h.garminLogin))
+		r.Post("/api/garmin/login/mfa", demoGuard(h.garminLoginMFA))
+		r.Post("/api/garmin/disconnect", demoGuard(h.garminDisconnect))
 
 		// M5: Claude connection card.
 		r.Get("/api/claude/status", h.claudeStatus)
-		r.Put("/api/claude/token", h.claudeTokenSet)
-		r.Delete("/api/claude/token", h.claudeTokenDelete)
+		r.Put("/api/claude/token", demoGuard(h.claudeTokenSet))
+		r.Delete("/api/claude/token", demoGuard(h.claudeTokenDelete))
 
-		// M5: Web Push.
+		// M5: Web Push. subscribe/test reach out to a caller-supplied endpoint
+		// URL (an SSRF primitive with auth bypassed), so they're demo-guarded.
 		r.Get("/api/push/vapid-public-key", h.pushVAPIDKey)
-		r.Post("/api/push/subscribe", h.pushSubscribe)
-		r.Delete("/api/push/subscribe", h.pushUnsubscribe)
-		r.Post("/api/push/test", h.pushTest)
+		r.Post("/api/push/subscribe", demoGuard(h.pushSubscribe))
+		r.Delete("/api/push/subscribe", demoGuard(h.pushUnsubscribe))
+		r.Post("/api/push/test", demoGuard(h.pushTest))
 		r.Get("/api/status", h.status)
-		r.Post("/api/sync", h.sync)
+		r.Post("/api/sync", demoGuard(h.sync))
 		r.Get("/api/activities", h.activities)
 		r.Get("/api/recovery", h.recovery)
 
-		// M1
+		// M1. crossfit/parse writes an uploaded image to disk (+ multipart
+		// intake); plan/generate is the tail of that flow — both demo-guarded.
+		// The seeded plan already renders on the Plan page.
 		r.Get("/api/profile", h.profile)
 		r.Put("/api/profile", h.updateProfile)
-		r.Post("/api/crossfit/parse", h.crossfitParse)
-		r.Post("/api/plan/generate", h.planGenerate)
+		r.Post("/api/crossfit/parse", demoGuard(h.crossfitParse))
+		r.Post("/api/plan/generate", demoGuard(h.planGenerate))
 		r.Get("/api/plan", h.plan)
 		r.Get("/api/fitness", h.fitness)
 
@@ -168,9 +188,10 @@ func NewRouter(d Deps) http.Handler {
 		r.Get("/api/progress", h.progress)
 		r.Post("/api/progress/analyze", h.analyzeProgress)
 
-		// M3.2
+		// M3.2. stream/fetch spawns the Garmin worker subprocess when a raw
+		// stream is missing — demo-guarded (analyses are pre-seeded).
 		r.Get("/api/activities/{id}/analysis", h.activityAnalysis)
-		r.Post("/api/activities/{id}/stream/fetch", h.fetchStream)
+		r.Post("/api/activities/{id}/stream/fetch", demoGuard(h.fetchStream))
 
 		// M3.3
 		r.Post("/api/chat", h.chat)

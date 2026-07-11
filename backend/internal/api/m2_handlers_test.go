@@ -73,10 +73,6 @@ func TestProfilePutRejectsBadTimezone(t *testing.T) {
 	}
 }
 
-
-
-
-
 func seedDecision(t *testing.T, s *store.Store, date string) {
 	t.Helper()
 	orig := `{"date":"` + date + `","dow":"Fri","run_type":"tempo","distance_km":6,"pace_target":"5:05/km","time_note":"~20:00 after CrossFit","optional_if_cns":false,"rationale":"Threshold work."}`
@@ -188,7 +184,7 @@ func TestAgentRunInvokesAgentAndReturnsResult(t *testing.T) {
 		Action: "SOFTEN", Source: "ai", Stale: false, Pushed: true,
 	}}
 	h2 := NewRouter(Deps{
-		Store: s, Auth:     testAuth(t, s),
+		Store: s, Auth: testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 0, nil
 		},
@@ -225,4 +221,3 @@ func TestTodayRequiresAuth(t *testing.T) {
 		t.Fatalf("status = %d, want 401", rec.Code)
 	}
 }
-

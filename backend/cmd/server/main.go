@@ -22,6 +22,7 @@ import (
 	"help-my-run/backend/internal/chat"
 	"help-my-run/backend/internal/coach"
 	"help-my-run/backend/internal/config"
+	"help-my-run/backend/internal/demo"
 	"help-my-run/backend/internal/garmin"
 	"help-my-run/backend/internal/llm"
 	"help-my-run/backend/internal/progress"
@@ -53,13 +54,31 @@ type App struct {
 // store, constructs the Garmin runner, and builds the router with a SyncFunc
 // adapter that runs SyncAll.
 func Wire(cfg *config.Config) (*App, error) {
-	s, err := store.Open(cfg.DBPath)
+	dbPath := cfg.DBPath
+	if cfg.Demo {
+		dbPath = ":memory:" // M6.5: zero residue, no interference with a real DB
+	}
+	s, err := store.Open(dbPath)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.Migrate(); err != nil {
 		_ = s.Close()
 		return nil, err
+	}
+	if cfg.Demo {
+		// Seed on the UTC calendar date: /api/today (resolveDate) and the web
+		// default to UTC, so day-0 must be the UTC date or the centerpiece 404s
+		// whenever the server's local date differs from UTC.
+		if err := demo.Seed(s, time.Now().UTC()); err != nil {
+			_ = s.Close()
+			return nil, err
+		}
+		// Any accidental disk write (e.g. an image upload) lands in a throwaway
+		// dir, never the real IMAGE_DIR — keeps the zero-residue promise.
+		if tmp, terr := os.MkdirTemp("", "helpmyrun-demo-"); terr == nil {
+			cfg.ImageDir = tmp
+		}
 	}
 
 	runner := garmin.Runner{Python: cfg.PythonBin, Script: cfg.WorkerScript}
@@ -82,9 +101,12 @@ func Wire(cfg *config.Config) (*App, error) {
 		}
 		return []string{"CLAUDE_CODE_OAUTH_TOKEN=" + tok}
 	}
-	execRunner := llm.ExecRunner{Bin: cfg.ClaudeBin, EnvFunc: claudeEnv}
+	var llmRunner llm.Runner = llm.ExecRunner{Bin: cfg.ClaudeBin, EnvFunc: claudeEnv}
+	if cfg.Demo {
+		llmRunner = demo.Runner{} // curated sample outputs, no claude -p
+	}
 	llmClient := &llm.Client{
-		Runner:  execRunner,
+		Runner:  llmRunner,
 		Model:   cfg.ClaudeModel,
 		Timeout: 120 * time.Second,
 	}
@@ -100,9 +122,16 @@ func Wire(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
+	// Demo: the agent still runs (so "Run coach now" produces a canned verdict
+	// via DemoRunner) but its syncer is a no-op — it must NEVER touch Garmin or
+	// read the owner's real tokenstore.
+	var syncer agent.Syncer = agent.NewRealSyncer(s, runner, extraEnv)
+	if cfg.Demo {
+		syncer = demoSyncer{}
+	}
 	dailyAgent := agent.New(
 		s,
-		agent.NewRealSyncer(s, runner, extraEnv),
+		syncer,
 		coachEngine,
 		pushService, // Web Push briefing (M5)
 		agentClock{},
@@ -122,8 +151,9 @@ func Wire(cfg *config.Config) (*App, error) {
 
 		GarminLogin:      garmin.NewLoginManager(cfg.PythonBin, cfg.WorkerScript, extraEnv),
 		GarminTokenstore: cfg.GarminTokenstore,
-		Claude:           &api.ClaudeProbe{Bin: cfg.ClaudeBin, Model: cfg.ClaudeModel, Runner: execRunner},
+		Claude:           &api.ClaudeProbe{Bin: cfg.ClaudeBin, Model: cfg.ClaudeModel, Runner: llmRunner},
 		Push:             pushService,
+		Demo:             cfg.Demo,
 	})
 
 	return &App{
@@ -169,6 +199,16 @@ func garminEnv(cfg *config.Config) []string {
 	return []string{
 		"GARMIN_TOKENSTORE=" + cfg.GarminTokenstore,
 	}
+}
+
+// demoSyncer is the M6.5 no-op agent syncer: reports "skipped" and touches
+// nothing, so the demo coach loop runs against seeded data without ever
+// spawning the Garmin worker or reading the owner's tokenstore.
+type demoSyncer struct{}
+
+func (demoSyncer) SyncAll(context.Context) syncpkg.AllResult {
+	note := "demo mode: sync skipped"
+	return syncpkg.AllResult{Garmin: syncpkg.SourceResult{Status: "skipped", Error: &note}}
 }
 
 // agentClock backs the agent with the real clock.
@@ -234,12 +274,15 @@ func runSyncOnBoot(ctx context.Context, fn func(context.Context)) {
 func main() {
 	resetPassword := flag.Bool("reset-password", false,
 		"clear the owner password, API token, and all sessions, then exit (setup runs again on next visit)")
+	demoMode := flag.Bool("demo", false,
+		"demo mode: in-memory DB seeded with synthetic data, no Garmin or Claude needed (M6.5)")
 	flag.Parse()
 
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
+	cfg.Demo = *demoMode
 
 	app, err := Wire(cfg)
 	if err != nil {
@@ -257,6 +300,14 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.Demo {
+		// M6.5: no sync, no scheduler — the fixture carries today's decision.
+		// Serve and nothing else; the DB evaporates on exit.
+		log.Printf("=== DEMO MODE === synthetic data, sample coach responses, in-memory DB; nothing is saved")
+		serve(ctx, cfg, app)
+		return
+	}
 
 	// Periodic sync ticker (the agentic schedule is M2; this is plain periodic).
 	runner := app.Runner
@@ -308,6 +359,11 @@ func main() {
 		})
 	log.Printf("agent scheduler: started (schedule re-read from profile each cycle)")
 
+	serve(ctx, cfg, app)
+}
+
+// serve runs the HTTP server until ctx is cancelled (shared by demo + normal).
+func serve(ctx context.Context, cfg *config.Config, app *App) {
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           app.Handler,

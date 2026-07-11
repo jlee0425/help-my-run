@@ -2,7 +2,7 @@
 -include .env
 export
 
-.PHONY: run-backend run-web build build-web garmin-login sync test install
+.PHONY: run-backend run-web build build-web garmin-login sync test install demo
 
 # Relative paths in .env are resolved against the REPO ROOT here (the server
 # runs from backend/, which used to break them — the old "absolute paths only"
@@ -66,3 +66,7 @@ install: build
 	@echo "    loginctl enable-linger $$USER"
 	@echo
 	@echo "Logs: journalctl --user -u helpmyrun -f"
+
+# Demo mode: no Garmin, no Claude — in-memory DB seeded with synthetic data.
+demo: build
+	./bin/helpmyrun --demo

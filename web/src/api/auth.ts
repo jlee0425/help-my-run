@@ -1,6 +1,6 @@
 import { apiGet, apiPost } from './client';
 
-export type AuthState = { setup_required: boolean; authed: boolean };
+export type AuthState = { setup_required: boolean; authed: boolean; demo: boolean };
 
 export const authState = () => apiGet<AuthState>('/api/auth/state');
 export const setup = (password: string) =>

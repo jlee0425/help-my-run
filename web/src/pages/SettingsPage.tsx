@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { changePassword, regenerateToken } from '../api/auth';
 import {
+  useAuthState,
   useClaudeStatus,
   useRevokeOtherSessions,
   useRevokeSession,
@@ -19,6 +20,20 @@ import {
 import { describeUA } from '../lib/devices';
 import { pushEnabled, pushSupported, sendTestPush, subscribePush, unsubscribePush } from '../lib/push';
 import { MonoLabel, Toggle } from '../ui/kit';
+
+/** True when this instance runs with --demo (credential actions are disabled). */
+function useDemo(): boolean {
+  return !!useAuthState().data?.demo;
+}
+
+/** One-line note explaining why a control is inert in the demo. */
+function DemoNote() {
+  return (
+    <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 8 }}>
+      Disabled in the demo — self-host to manage your own instance.
+    </div>
+  );
+}
 
 const inputStyle = {
   width: '100%',
@@ -59,6 +74,7 @@ function GarminCard() {
   const nav = useNavigate();
   const { data: garmin, isError } = useGarminStatus();
   const disconnect = useGarminDisconnect();
+  const demo = useDemo();
 
   return (
     <SettingsCard label="// GARMIN">
@@ -85,7 +101,8 @@ function GarminCard() {
           <button
             className="btn-secondary"
             style={{ color: 'var(--red)' }}
-            disabled={disconnect.isPending}
+            disabled={disconnect.isPending || demo}
+            title={demo ? 'Disabled in the demo' : undefined}
             onClick={() => {
               if (window.confirm('Disconnect Garmin? Stored tokens are deleted.'))
                 disconnect.mutate();
@@ -95,6 +112,7 @@ function GarminCard() {
           </button>
         )}
       </div>
+      {demo && <DemoNote />}
     </SettingsCard>
   );
 }
@@ -104,6 +122,7 @@ function ClaudeCard() {
   const setToken = useClaudeTokenSet();
   const delToken = useClaudeTokenDelete();
   const [token, setTokenDraft] = useState('');
+  const demo = useDemo();
 
   return (
     <SettingsCard label="// CLAUDE">
@@ -165,7 +184,8 @@ function ClaudeCard() {
             </button>
             <button
               className="btn-secondary"
-              disabled={delToken.isPending}
+              disabled={delToken.isPending || demo}
+              title={demo ? 'Disabled in the demo' : undefined}
               onClick={() => delToken.mutate()}
             >
               Remove stored token
@@ -421,6 +441,7 @@ function DevicesBlock() {
 
 function SecurityCard() {
   const logout = useLogout();
+  const demo = useDemo();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [pwLine, setPwLine] = useState<{ ok: boolean; text: string } | null>(null);
@@ -514,11 +535,13 @@ function SecurityCard() {
         <button
           className="btn-secondary"
           style={{ color: 'var(--red)' }}
-          disabled={logout.isPending}
+          disabled={logout.isPending || demo}
+          title={demo ? 'Disabled in the demo' : undefined}
           onClick={() => logout.mutate()}
         >
           Log out
         </button>
+        {demo && <DemoNote />}
       </div>
     </SettingsCard>
   );

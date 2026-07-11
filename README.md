@@ -4,6 +4,14 @@ A self-hostable, single-user AI running coach — now a **website + installable 
 
 Everything ships as **one binary**: the Go server embeds the built web app. Open it in a browser, install it to your phone's home screen, done.
 
+## Try it in 60 seconds (no accounts needed)
+
+```bash
+make demo    # builds the binary, then serves http://localhost:8080 with 12 weeks of synthetic data
+```
+
+Demo mode needs **no Garmin account and no Claude subscription** — but `make demo` builds from source, so you do need the toolchains: **Go 1.22+, Node 18+ (to build the UI), and Python 3.11+**. It seeds an in-memory database with a realistic 84-day training block (including an overreach week the coach reacts to) and answers coach requests with labeled sample responses. Nothing touches disk; quit and it's gone. Actions that need real credentials (sync, Garmin login, notifications) are disabled with a "demo mode" message. The real thing — your data, your coach — starts at Prerequisites below.
+
 ## Architecture
 
 - **Go core** (`backend/`) owns the SQLite database, the REST API, the daily agent + sync scheduler, auth, Web Push — and serves the embedded web UI. Single source of truth, single process.

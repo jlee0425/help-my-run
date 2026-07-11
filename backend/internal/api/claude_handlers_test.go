@@ -38,7 +38,7 @@ func claudeTestServer(t *testing.T, runner *cannedRunner, bin string) (http.Hand
 		SyncFunc: func(ctx context.Context) (string, int, *string) { return "ok", 0, nil },
 		Coach:    &fakeCoach{}, ImageDir: t.TempDir(), Agent: &fakeAgent{},
 		Progress: &fakeProgress{}, Streams: &fakeStreams{}, Chat: &fakeChat{},
-		Claude:   &ClaudeProbe{Bin: bin, Model: "claude-opus-4-8", Runner: runner},
+		Claude: &ClaudeProbe{Bin: bin, Model: "claude-opus-4-8", Runner: runner},
 	}
 	return NewRouter(deps), s
 }

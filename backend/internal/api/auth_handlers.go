@@ -104,6 +104,10 @@ func (h *handlers) revokeOtherSessions(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/auth/state (public)
 func (h *handlers) authState(w http.ResponseWriter, r *http.Request) {
+	if h.d.Demo {
+		writeJSON(w, http.StatusOK, authStateDTO{SetupRequired: false, Authed: true, Demo: true})
+		return
+	}
 	setup, err := h.d.Auth.SetupRequired()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

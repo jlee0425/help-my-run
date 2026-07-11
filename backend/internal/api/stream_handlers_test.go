@@ -24,8 +24,8 @@ func newStreamsServer(t *testing.T, fs *fakeStreams) http.Handler {
 		t.Fatalf("Migrate: %v", err)
 	}
 	deps := Deps{
-		Store:    s,
-		Auth:     testAuth(t, s),
+		Store: s,
+		Auth:  testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 0, nil
 		},

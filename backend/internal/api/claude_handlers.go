@@ -90,6 +90,18 @@ func (p *ClaudeProbe) Invalidate() {
 
 // GET /api/claude/status[?refresh=true]
 func (h *handlers) claudeStatus(w http.ResponseWriter, r *http.Request) {
+	if h.d.Demo {
+		// Don't probe for a real CLI the demo visitor won't have — present the
+		// card honestly: the coach works, on sample data.
+		writeJSON(w, http.StatusOK, claudeStatusDTO{
+			BinaryFound:   true,
+			Authenticated: true,
+			Model:         "demo",
+			Detail:        "Demo mode — coach responses are curated samples. Self-host to run the live coach on your Claude subscription.",
+			CheckedAt:     time.Now().UTC().Format(time.RFC3339),
+		})
+		return
+	}
 	if h.d.Claude == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "claude probe not wired"})
 		return

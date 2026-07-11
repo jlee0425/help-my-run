@@ -4,8 +4,13 @@ import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { Shell } from './Shell';
 
+const mocks = vi.hoisted(() => ({
+  authState: { data: { setup_required: false, authed: true, demo: false } },
+}));
+
 vi.mock('../api/hooks', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/hooks')>()),
+  useAuthState: () => mocks.authState,
   useStatus: () => ({
     data: {
       garmin: { connected: true, last_synced_at: null, last_run_at: null, status: 'ok', error: null },
@@ -80,5 +85,23 @@ describe('Shell', () => {
     expect(screen.getByText('AMBER')).toBeInTheDocument();
     expect(screen.getByText(/Next run/)).toBeInTheDocument();
     expect(screen.getByText('page-content')).toBeInTheDocument();
+  });
+
+  it('shows the DEMO badge in demo mode on mobile and desktop, never otherwise', () => {
+    mocks.authState.data = { setup_required: false, authed: true, demo: true };
+    setDesktop(false);
+    const { unmount } = renderShell();
+    expect(screen.getByText(/DEMO/)).toBeInTheDocument();
+    unmount();
+
+    setDesktop(true);
+    const { unmount: unmount2 } = renderShell();
+    expect(screen.getByText(/DEMO/)).toBeInTheDocument();
+    unmount2();
+
+    mocks.authState.data = { setup_required: false, authed: true, demo: false };
+    setDesktop(true);
+    renderShell();
+    expect(screen.queryByText(/DEMO/)).not.toBeInTheDocument();
   });
 });

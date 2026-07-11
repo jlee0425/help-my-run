@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -241,4 +242,58 @@ func TestRunNightlyBackupWritesSnapshotAndSurvivesFailure(t *testing.T) {
 	}
 	cfg.BackupDir = blocked
 	runNightlyBackup(app.Store, cfg) // must not panic
+}
+
+// M6.5: --demo wires an in-memory seeded instance with auth bypassed.
+func TestWireDemoServesSeededDataWithoutAuth(t *testing.T) {
+	cfg := &config.Config{
+		Demo:         true,
+		Port:         "8080",
+		PythonBin:    "/bin/cat",
+		WorkerScript: "/dev/null",
+	}
+	app, err := Wire(cfg)
+	if err != nil {
+		t.Fatalf("Wire(demo) error = %v", err)
+	}
+	t.Cleanup(func() { _ = app.Store.Close() })
+
+	// No cookie, no bearer: everything works.
+	rec := httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/state", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"demo":true`) {
+		t.Fatalf("auth/state = %d %s, want 200 with demo:true", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/today", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"amber"`) {
+		t.Fatalf("/api/today = %d, want 200 with today's amber decision (body: %.200s)", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/activities", nil))
+	if rec.Code != http.StatusOK || strings.Count(rec.Body.String(), `"activity_id"`) < 30 {
+		t.Fatalf("/api/activities = %d with %d activities, want 200 and >=30",
+			rec.Code, strings.Count(rec.Body.String(), `"activity_id"`))
+	}
+
+	// "Run coach now" against the REAL wired agent: the demo no-op syncer means
+	// it must NOT touch Garmin (GarminTokenstore is unset here) and must still
+	// produce a decision. A 5xx would mean the real syncer leaked in.
+	rec = httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/agent/run", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/api/agent/run (demo, real agent + no-op syncer) = %d (%s), want 200",
+			rec.Code, rec.Body.String())
+	}
+
+	// The Garmin-worker-spawning routes must be 409 even against the real graph.
+	for _, p := range []string{"/api/sync", "/api/activities/8000000001/stream/fetch"} {
+		rec = httptest.NewRecorder()
+		app.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, p, nil))
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("%s in demo = %d, want 409", p, rec.Code)
+		}
+	}
 }

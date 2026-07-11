@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"time"
 
 	"help-my-run/backend/internal/garmin"
 	syncpkg "help-my-run/backend/internal/sync"
@@ -11,6 +12,11 @@ import (
 
 // GET /api/garmin/status
 func (h *handlers) garminStatus(w http.ResponseWriter, r *http.Request) {
+	if h.d.Demo {
+		last := time.Now().UTC().Format(time.RFC3339)
+		writeJSON(w, http.StatusOK, map[string]any{"connected": true, "last_synced_at": &last})
+		return
+	}
 	connected := syncpkg.TokenStoreReady(h.d.GarminTokenstore)
 	var lastSynced *string
 	if log, err := h.d.Store.GetSyncLog("garmin"); err == nil {

@@ -47,6 +47,10 @@ type Config struct {
 	// stays empty here and resolves via ResolvedBackupDir.
 	BackupDir  string `envconfig:"BACKUP_DIR"`
 	BackupKeep int    `envconfig:"BACKUP_KEEP" default:"14"`
+
+	// M6.5: demo mode — set by the --demo flag only, never from the
+	// environment (an accidental DEMO=true must not bypass auth).
+	Demo bool `ignored:"true"`
 }
 
 // ResolvedBackupDir returns BACKUP_DIR, defaulting to a backups/ dir next to

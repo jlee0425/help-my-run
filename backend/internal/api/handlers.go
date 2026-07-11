@@ -32,6 +32,12 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 	// (00001 seed) -> connected:false; a failed login -> status "error" ->
 	// connected:false; a successful sync -> "ok" -> connected:true.
 	garminConn := garminLog.Status == "ok"
+	garminStatus := garminLog.Status
+	if h.d.Demo {
+		// Match the faked /api/garmin/status so the Today/Settings chrome reads
+		// as a connected instance, not a broken one.
+		garminConn, garminStatus = true, "ok"
+	}
 
 	nextRun, agentEnabled := h.agentSchedule()
 
@@ -40,7 +46,7 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 			Connected:    garminConn,
 			LastSyncedAt: garminLog.LastSyncedAt,
 			LastRunAt:    garminLog.LastRunAt,
-			Status:       garminLog.Status,
+			Status:       garminStatus,
 			Error:        garminLog.Error,
 		},
 		Counts:       statusCounts{Activities: activitiesCount, RecoveryDays: recoveryDays},

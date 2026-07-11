@@ -26,8 +26,8 @@ func newTestServerWithImageDir(t *testing.T, imageDir string) (http.Handler, *st
 		t.Fatalf("Migrate: %v", err)
 	}
 	deps := Deps{
-		Store:    s,
-		Auth:     testAuth(t, s),
+		Store: s,
+		Auth:  testAuth(t, s),
 		SyncFunc: func(ctx context.Context) (string, int, *string) {
 			return "ok", 0, nil
 		},

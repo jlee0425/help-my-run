@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     revokeOthers,
     defaultSessions,
     // Mutable per-test state the hook mocks read at render time.
+    authState: { data: { setup_required: false, authed: true, demo: false } },
     sessionsState: { data: defaultSessions() as ReturnType<typeof defaultSessions> | undefined, error: null as Error | null },
     revokeState: { mutate: revokeSession, isPending: false, error: null as Error | null },
     revokeOthersState: { mutate: revokeOthers, isPending: false, error: null as Error | null },
@@ -43,6 +44,7 @@ vi.mock('../lib/push', () => ({
 }));
 
 vi.mock('../api/hooks', () => ({
+  useAuthState: () => mocks.authState,
   useSessions: () => mocks.sessionsState,
   useRevokeSession: () => mocks.revokeState,
   useRevokeOtherSessions: () => mocks.revokeOthersState,
@@ -108,6 +110,15 @@ describe('SettingsPage', () => {
     mocks.sessionsState.error = null;
     mocks.revokeState.error = null;
     mocks.revokeOthersState.error = null;
+    mocks.authState.data = { setup_required: false, authed: true, demo: false };
+  });
+
+  it('disables credential/logout actions in demo mode', () => {
+    mocks.authState.data = { setup_required: false, authed: true, demo: true };
+    renderPage();
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeDisabled();
+    expect(screen.getAllByText(/Disabled in the demo/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders all five cards with live data', () => {

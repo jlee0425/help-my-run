@@ -40,6 +40,7 @@ type statusResp struct {
 type authStateDTO struct {
 	SetupRequired bool `json:"setup_required"`
 	Authed        bool `json:"authed"`
+	Demo          bool `json:"demo"` // M6.5
 }
 
 // --- /api/sync ---

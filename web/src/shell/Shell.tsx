@@ -3,7 +3,33 @@ import { useLocation, useNavigate } from 'react-router';
 import { useDesktop } from './useMedia';
 import { Rail } from './Rail';
 import { TabBar } from './TabBar';
+import { useAuthState } from '../api/hooks';
 import { useToday } from '../api/today';
+
+/** Fixed corner chip shown whenever the instance runs with --demo (M6.5). */
+function DemoBadge() {
+  return (
+    <div
+      className="mono-label"
+      style={{
+        position: 'fixed',
+        top: 10,
+        right: 10,
+        zIndex: 60,
+        fontSize: 9,
+        letterSpacing: '.18em',
+        color: 'var(--amber)',
+        background: 'var(--amber-tint, rgba(240,180,80,.12))',
+        border: '1px solid var(--amber-border, rgba(240,180,80,.35))',
+        borderRadius: 8,
+        padding: '4px 9px',
+        pointerEvents: 'none',
+      }}
+    >
+      DEMO · SAMPLE DATA
+    </div>
+  );
+}
 
 const CRUMBS: Record<string, string> = {
   '/': 'HOME',
@@ -45,10 +71,13 @@ export function Shell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const nav = useNavigate();
   const { data: today } = useToday();
+  const { data: auth } = useAuthState();
+  const demoBadge = auth?.demo ? <DemoBadge /> : null;
 
   if (!desktop) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+        {demoBadge}
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {children}
         </div>
@@ -63,6 +92,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {demoBadge}
       <Rail />
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div
