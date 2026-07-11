@@ -12,8 +12,8 @@ export default defineConfig({
       filename: 'sw.ts',
       injectRegister: 'auto',
       manifest: {
-        name: 'Running on AI',
-        short_name: 'RunCoach',
+        name: 'Help My Run',
+        short_name: 'Help My Run',
         description: 'A Garmin-powered agentic running coach.',
         display: 'standalone',
         start_url: '/',

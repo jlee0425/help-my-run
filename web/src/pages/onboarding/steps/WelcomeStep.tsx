@@ -20,7 +20,7 @@ export function WelcomeStep() {
         <span style={{ color: 'var(--green)', fontSize: 22 }}>↓</span>
       </div>
       <MonoLabel green style={{ fontSize: 11, letterSpacing: '.26em', marginBottom: 14 }}>
-        RUNNING ON AI
+        HELP MY RUN
       </MonoLabel>
       <div style={{ fontSize: 32, fontWeight: 700, lineHeight: 1.12, letterSpacing: '-.01em' }}>
         Your coach reads Garmin while you sleep.

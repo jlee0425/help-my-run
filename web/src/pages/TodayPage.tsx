@@ -440,7 +440,7 @@ export function TodayPage() {
             color: 'var(--green)',
           }}
         >
-          RUNNING ON AI
+          HELP MY RUN
         </span>
         <span
           style={{

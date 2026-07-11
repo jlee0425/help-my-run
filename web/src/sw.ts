@@ -39,7 +39,7 @@ self.addEventListener('push', (e) => {
     /* non-JSON push */
   }
   e.waitUntil(
-    self.registration.showNotification(data.title ?? 'Running on AI', {
+    self.registration.showNotification(data.title ?? 'Help My Run', {
       body: data.body ?? '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',

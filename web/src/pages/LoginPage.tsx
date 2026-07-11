@@ -35,7 +35,7 @@ export function LoginPage() {
           className="mono-label mono-label--green"
           style={{ fontSize: 11, letterSpacing: '.26em', marginBottom: 14 }}
         >
-          RUNNING ON AI
+          HELP MY RUN
         </div>
         <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.15, marginBottom: 22 }}>
           Welcome back.

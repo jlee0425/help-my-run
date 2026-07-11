@@ -75,13 +75,13 @@ describe('Shell', () => {
     expect(screen.getByText('TRENDS')).toBeInTheDocument();
     expect(screen.getByText('COACH')).toBeInTheDocument();
     expect(screen.getByText('page-content')).toBeInTheDocument();
-    expect(screen.queryByText('RUNNING ON AI')).not.toBeInTheDocument();
+    expect(screen.queryByText('HELP MY RUN')).not.toBeInTheDocument();
   });
 
   it('renders desktop rail + readiness pill at ≥1024px', () => {
     setDesktop(true);
     renderShell();
-    expect(screen.getByText('RUNNING ON AI')).toBeInTheDocument();
+    expect(screen.getByText('HELP MY RUN')).toBeInTheDocument();
     expect(screen.getByText('AMBER')).toBeInTheDocument();
     expect(screen.getByText(/Next run/)).toBeInTheDocument();
     expect(screen.getByText('page-content')).toBeInTheDocument();

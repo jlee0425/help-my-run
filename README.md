@@ -1,4 +1,4 @@
-# help-my-run · Running on AI
+# Help My Run
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-3fb950.svg)
 ![Go 1.22+](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)
@@ -39,7 +39,7 @@ _Captured live from `make demo` — every number below is synthetic._
 
 - **Go core** (`backend/`) owns the SQLite database, the REST API, the daily agent + sync scheduler, auth, Web Push — and serves the embedded web UI. Single source of truth, single process.
 - **Python Garmin worker** (`garmin-worker/`) is a thin, stateless subprocess the Go core invokes to talk to Garmin (fetch, FIT streams, and the web-driven login with MFA over stdin/stdout).
-- **Web app** (`web/`) is a React + Vite SPA (dark "Running on AI" design) built into the binary. Installable as a PWA; morning briefings arrive via Web Push.
+- **Web app** (`web/`) is a React + Vite SPA (dark, monospace-accented design) built into the binary. Installable as a PWA; morning briefings arrive via Web Push.
 
 ```mermaid
 flowchart TD

@@ -61,7 +61,7 @@ export function Rail() {
             color: 'var(--text-2)',
           }}
         >
-          RUNNING ON AI
+          HELP MY RUN
         </span>
       </div>
 

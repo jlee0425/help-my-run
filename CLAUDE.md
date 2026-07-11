@@ -38,7 +38,7 @@ server embeds the built web app.
   Subcommands: `fetch --since` (prints one JSON contract object), `stream
   --activity-id` (FIT series), `login-web` (stdin creds → MFA handshake →
   tokenstore; creds never in argv/env/logs), `login` (CLI fallback).
-- `web/` — React 19 + Vite + TS + TanStack Query SPA ("Running on AI" dark
+- `web/` — React 19 + Vite + TS + TanStack Query SPA (dark
   design; tokens in `src/styles/tokens.css` are canonical). PWA via
   vite-plugin-pwa injectManifest (`src/sw.ts`: precache, offline, Web Push).
 

@@ -40,7 +40,7 @@ function Splash() {
           letterSpacing: '.26em',
         }}
       >
-        RUNNING ON AI
+        HELP MY RUN
       </span>
     </div>
   );
