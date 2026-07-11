@@ -1,5 +1,11 @@
 # help-my-run · Running on AI
 
+![License: MIT](https://img.shields.io/badge/license-MIT-3fb950.svg)
+![Go 1.22+](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Single binary](https://img.shields.io/badge/ships%20as-one%20binary-6f42c1)
+![AI: Claude](https://img.shields.io/badge/coach-claude%20--p-d97757)
+
 A self-hostable, single-user AI running coach — now a **website + installable PWA**. It pulls your runs **and** your recovery data (sleep, HRV, Body Battery, resting HR) from **Garmin Connect** into a local database, then uses Claude to coach you: a readiness verdict and a (possibly reshaped) session every morning, 12-week trends, a weekly plan periodised around your CrossFit schedule, and a chat that answers from your own data.
 
 Everything ships as **one binary**: the Go server embeds the built web app. Open it in a browser, install it to your phone's home screen, done.
@@ -12,11 +18,56 @@ make demo    # builds the binary, then serves http://localhost:8080 with 12 week
 
 Demo mode needs **no Garmin account and no Claude subscription** — but `make demo` builds from source, so you do need the toolchains: **Go 1.22+, Node 18+ (to build the UI), and Python 3.11+**. It seeds an in-memory database with a realistic 84-day training block (including an overreach week the coach reacts to) and answers coach requests with labeled sample responses. Nothing touches disk; quit and it's gone. Actions that need real credentials (sync, Garmin login, notifications) are disabled with a "demo mode" message. The real thing — your data, your coach — starts at Prerequisites below.
 
+## Screenshots
+
+_Captured live from `make demo` — every number below is synthetic._
+
+![Today — the 06:00 verdict. An amber readiness call downgrades the planned tempo to an easy run, with the recovery signals (HRV, sleep, resting HR, Body Battery) that drove the decision.](docs/assets/today.png)
+
+| Trends | Weekly plan |
+| :---: | :---: |
+| [![Trends — 12-week aerobic engine: easy pace dropping at the same heart rate, HRV and resting-HR baselines, run-vs-CrossFit load.](docs/assets/trends.png)](docs/assets/trends.png) | [![Plan — a CrossFit-aware week: quality on low-CNS days, the long run protected, easy volume held at the 30 km base.](docs/assets/plan.png)](docs/assets/plan.png) |
+
+![Coach — chat that answers from your own data, periodised around your CrossFit week. In the demo, replies are curated samples; self-host to run the live coach on your Claude subscription.](docs/assets/coach.png)
+
+<p align="center">
+  <img src="docs/assets/mobile.png" alt="The same app installed as a PWA on a phone: the morning verdict and recovery signals in a single-column mobile layout." width="300">
+  <br><em>Installable on your phone — morning briefings arrive via Web Push.</em>
+</p>
+
 ## Architecture
 
 - **Go core** (`backend/`) owns the SQLite database, the REST API, the daily agent + sync scheduler, auth, Web Push — and serves the embedded web UI. Single source of truth, single process.
 - **Python Garmin worker** (`garmin-worker/`) is a thin, stateless subprocess the Go core invokes to talk to Garmin (fetch, FIT streams, and the web-driven login with MFA over stdin/stdout).
 - **Web app** (`web/`) is a React + Vite SPA (dark "Running on AI" design) built into the binary. Installable as a PWA; morning briefings arrive via Web Push.
+
+```mermaid
+flowchart TD
+    subgraph phone["📱 Phone / browser"]
+        pwa["React PWA<br/>installable · Web Push"]
+    end
+
+    subgraph host["🏠 Home machine — one Go binary"]
+        api["chi REST API<br/>+ embedded web UI"]
+        agent["Daily agent @ 06:00<br/>readiness → reshape session → push"]
+        db[("SQLite<br/>runs · recovery · plans")]
+        api --- db
+        agent --- db
+    end
+
+    worker["🐍 Python Garmin worker<br/>stateless subprocess"]
+    garmin(["Garmin Connect"])
+    claude(["claude -p<br/>your Claude subscription · $0/token"])
+
+    pwa <-->|"private HTTPS via Tailscale"| api
+    agent -->|spawn| worker
+    api -->|"sync (spawn)"| worker
+    worker <-->|"OAuth tokenstore"| garmin
+    agent -->|"coach prompts"| claude
+    api -->|"chat · weekly plans"| claude
+```
+
+The single arrow that never exists: **no path from this system to a metered AI bill or a third-party server.** Garmin talk stays in the worker under your account; every Claude call is `claude -p` under your subscription; the SPA and API share one origin, so there's no CORS and nothing to expose.
 
 ## Prerequisites
 
