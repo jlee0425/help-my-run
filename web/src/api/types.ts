@@ -11,6 +11,7 @@ export type Status = {
   counts: { activities: number; recovery_days: number };
   agent_next_run: string | null;
   agent_enabled: boolean;
+  manual_sync: boolean;
 };
 
 export type Activity = {

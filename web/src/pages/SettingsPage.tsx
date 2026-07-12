@@ -272,6 +272,7 @@ function SyncCard() {
   const update = useUpdateProfile();
 
   const agentEnabled = profile?.agent_enabled ?? true;
+  const manual = status?.manual_sync ?? false;
 
   return (
     <SettingsCard label="// SYNC & AGENT">
@@ -284,6 +285,12 @@ function SyncCard() {
         DATA · {status?.counts.activities ?? 0} ACTIVITIES · {status?.counts.recovery_days ?? 0}{' '}
         RECOVERY DAYS
       </div>
+      {manual && (
+        <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 8 }}>
+          Manual mode — nothing syncs or runs on a schedule. Pull data with <b>Sync now</b> and get a
+          verdict with <b>Run coach now</b>.
+        </div>
+      )}
       {sync.error && (
         <div className="error-line" style={{ marginTop: 8 }}>
           {(sync.error as Error).message}
@@ -301,11 +308,14 @@ function SyncCard() {
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, color: 'var(--text-2)' }}>Daily agent</div>
               <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 2 }}>
-                Runs every morning: sync, readiness, reshape today.
+                {manual
+                  ? 'Off in manual mode — use “Run coach now” on Today.'
+                  : 'Runs every morning: sync, readiness, reshape today.'}
               </div>
             </div>
             <Toggle
-              on={agentEnabled}
+              on={manual ? false : agentEnabled}
+              disabled={manual}
               onChange={(v) => update.mutate({ ...profile, agent_enabled: v })}
               label="Daily agent"
             />

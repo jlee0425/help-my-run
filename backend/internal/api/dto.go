@@ -34,6 +34,7 @@ type statusResp struct {
 	Counts       statusCounts `json:"counts"`
 	AgentNextRun *string      `json:"agent_next_run"` // RFC3339 next daily-agent fire, nil when disabled
 	AgentEnabled bool         `json:"agent_enabled"`
+	ManualSync   bool         `json:"manual_sync"` // M6.6: no auto sync/verdict when true
 }
 
 // --- M5 /api/auth/state ---

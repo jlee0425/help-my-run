@@ -51,6 +51,12 @@ type Config struct {
 	// M6.5: demo mode — set by the --demo flag only, never from the
 	// environment (an accidental DEMO=true must not bypass auth).
 	Demo bool `ignored:"true"`
+
+	// M6.6: manual mode — no automatic Garmin sync and no automatic morning
+	// verdict. Sync happens only via POST /api/sync ("Sync now"); the coach
+	// runs only via POST /api/agent/run ("Run coach now"), on last-synced data.
+	// Nightly backups still run on their timer.
+	ManualSync bool `envconfig:"MANUAL_SYNC" default:"false"`
 }
 
 // ResolvedBackupDir returns BACKUP_DIR, defaulting to a backups/ dir next to

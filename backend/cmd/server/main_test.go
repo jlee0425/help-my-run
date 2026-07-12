@@ -297,3 +297,40 @@ func TestWireDemoServesSeededDataWithoutAuth(t *testing.T) {
 		}
 	}
 }
+
+// M6.6: manual mode wires a no-op agent syncer — "Run coach now" works against
+// last-synced data without touching Garmin — and reports the agent as unscheduled.
+func TestWireManualSyncMode(t *testing.T) {
+	cfg := &config.Config{
+		DBPath:           filepath.Join(t.TempDir(), "manual.db"),
+		Port:             "9090",
+		PythonBin:        "/bin/false", // if the syncer were real, spawning this would fail
+		WorkerScript:     "/dev/null",
+		GarminTokenstore: filepath.Join(t.TempDir(), "no-tokenstore"),
+		ClaudeBin:        "claude",
+		ClaudeModel:      "claude-opus-4-8",
+		ImageDir:         t.TempDir(),
+		ManualSync:       true,
+	}
+	app, err := Wire(cfg)
+	if err != nil {
+		t.Fatalf("Wire(manual) error = %v", err)
+	}
+	t.Cleanup(func() { _ = app.Store.Close() })
+	pinToken(t, app)
+
+	// /api/status reports manual_sync=true, agent not scheduled.
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	rec := httptest.NewRecorder()
+	app.Handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/api/status = %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `"manual_sync":true`) ||
+		!strings.Contains(body, `"agent_next_run":null`) ||
+		!strings.Contains(body, `"agent_enabled":false`) {
+		t.Fatalf("manual status = %s, want manual_sync:true, agent_next_run:null, agent_enabled:false", body)
+	}
+}

@@ -100,6 +100,11 @@ type Deps struct {
 	// M6.5: demo mode — auth bypassed (every request is the owner),
 	// credential-bearing endpoints return 409, auth/state advertises demo.
 	Demo bool
+
+	// M6.6: manual mode — no automatic sync or morning verdict. Reflected in
+	// /api/status (manual_sync, agent reported as not scheduled) so the UI is
+	// honest; "Sync now" and "Run coach now" still work.
+	ManualSync bool
 }
 
 // Push is the Web Push seam (*webpush.Service satisfies it).

@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     revokeOthers,
     defaultSessions,
     // Mutable per-test state the hook mocks read at render time.
+    manualSync: false,
     authState: { data: { setup_required: false, authed: true, demo: false } },
     sessionsState: { data: defaultSessions() as ReturnType<typeof defaultSessions> | undefined, error: null as Error | null },
     revokeState: { mutate: revokeSession, isPending: false, error: null as Error | null },
@@ -70,8 +71,9 @@ vi.mock('../api/hooks', () => ({
     data: {
       garmin: { connected: true, last_synced_at: '2026-07-09T05:30:00Z', last_run_at: null, status: 'ok', error: null },
       counts: { activities: 46, recovery_days: 89 },
-      agent_next_run: '2026-07-10T06:00:00Z',
-      agent_enabled: true,
+      agent_next_run: mocks.manualSync ? null : '2026-07-10T06:00:00Z',
+      manual_sync: mocks.manualSync,
+      agent_enabled: !mocks.manualSync,
     },
   }),
   useSync: () => ({ mutate: mocks.syncMutate, isPending: false, error: null }),
@@ -111,6 +113,14 @@ describe('SettingsPage', () => {
     mocks.revokeState.error = null;
     mocks.revokeOthersState.error = null;
     mocks.authState.data = { setup_required: false, authed: true, demo: false };
+    mocks.manualSync = false;
+  });
+
+  it('shows manual-mode note and disables the daily-agent toggle when manual_sync', () => {
+    mocks.manualSync = true;
+    renderPage();
+    expect(screen.getByText(/Manual mode/)).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Daily agent' })).toBeDisabled();
   });
 
   it('disables credential/logout actions in demo mode', () => {

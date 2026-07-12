@@ -122,12 +122,15 @@ func Wire(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 
-	// Demo: the agent still runs (so "Run coach now" produces a canned verdict
-	// via DemoRunner) but its syncer is a no-op — it must NEVER touch Garmin or
-	// read the owner's real tokenstore.
+	// The agent's syncer is a no-op when we must never auto-pull Garmin: demo
+	// mode (canned data) and manual mode (sync only via "Sync now"). In both,
+	// "Run coach now" still works — it coaches on last-synced data.
 	var syncer agent.Syncer = agent.NewRealSyncer(s, runner, extraEnv)
-	if cfg.Demo {
-		syncer = demoSyncer{}
+	switch {
+	case cfg.Demo:
+		syncer = noopSyncer{note: "demo mode: sync skipped"}
+	case cfg.ManualSync:
+		syncer = noopSyncer{note: "manual mode: sync only via Sync now"}
 	}
 	dailyAgent := agent.New(
 		s,
@@ -154,6 +157,7 @@ func Wire(cfg *config.Config) (*App, error) {
 		Claude:           &api.ClaudeProbe{Bin: cfg.ClaudeBin, Model: cfg.ClaudeModel, Runner: llmRunner},
 		Push:             pushService,
 		Demo:             cfg.Demo,
+		ManualSync:       cfg.ManualSync,
 	})
 
 	return &App{
@@ -201,13 +205,14 @@ func garminEnv(cfg *config.Config) []string {
 	}
 }
 
-// demoSyncer is the M6.5 no-op agent syncer: reports "skipped" and touches
-// nothing, so the demo coach loop runs against seeded data without ever
-// spawning the Garmin worker or reading the owner's tokenstore.
-type demoSyncer struct{}
+// noopSyncer is a no-op agent syncer: reports "skipped" and touches nothing, so
+// the coach loop runs against existing data without ever spawning the Garmin
+// worker or reading the tokenstore. Used by demo mode (M6.5) and manual mode
+// (M6.6).
+type noopSyncer struct{ note string }
 
-func (demoSyncer) SyncAll(context.Context) syncpkg.AllResult {
-	note := "demo mode: sync skipped"
+func (n noopSyncer) SyncAll(context.Context) syncpkg.AllResult {
+	note := n.note
 	return syncpkg.AllResult{Garmin: syncpkg.SourceResult{Status: "skipped", Error: &note}}
 }
 
@@ -320,9 +325,14 @@ func main() {
 		res := syncpkg.SyncAll(c, app.Store, runner, extraEnv, streamTrickle(cfg, app.Streams))
 		log.Printf("sync: garmin=%s/%d", res.Garmin.Status, res.Garmin.Synced)
 	}
-	// M0 follow-up #2: run once on boot, then on the interval.
-	runSyncOnBoot(ctx, syncOnce)
-	go syncpkg.RunTicker(ctx, syncInterval, syncOnce)
+	// M0 follow-up #2: run once on boot, then on the interval. M6.6: manual mode
+	// disables all automatic pulling — sync happens only via POST /api/sync.
+	if cfg.ManualSync {
+		log.Printf("sync: MANUAL mode — no boot sync, no periodic ticker; pull with `Sync now`")
+	} else {
+		runSyncOnBoot(ctx, syncOnce)
+		go syncpkg.RunTicker(ctx, syncInterval, syncOnce)
+	}
 
 	// scheduleProvider re-reads the live schedule from athlete_profile on every
 	// scheduler loop iteration; env values are first-boot fallbacks only.
@@ -348,14 +358,18 @@ func main() {
 	}
 	go scheduler.Run(ctx, scheduler.RealClock{}, scheduleProvider,
 		func(c context.Context, localDate string, enabled bool) {
-			if enabled {
+			switch {
+			case cfg.ManualSync:
+				// M6.6: no automatic verdict; this timer only carries the backup.
+				log.Printf("agent: date=%s skipped (manual mode); nightly backup still runs", localDate)
+			case enabled:
 				res := app.Agent.RunDaily(c, localDate)
 				log.Printf("agent: date=%s skipped=%v color=%s action=%s source=%s pushed=%v",
 					res.Date, res.Skipped, res.ReadinessColor, res.Action, res.Source, res.Pushed)
-			} else {
+			default:
 				log.Printf("agent: date=%s skipped (disabled in profile); nightly backup still runs", localDate)
 			}
-			runNightlyBackup(app.Store, cfg) // M6: backup rides the cadence, agent toggle or not
+			runNightlyBackup(app.Store, cfg) // M6: backup rides the cadence regardless
 		})
 	log.Printf("agent scheduler: started (schedule re-read from profile each cycle)")
 

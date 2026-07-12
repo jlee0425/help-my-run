@@ -16,6 +16,7 @@ vi.mock('../api/hooks', async (importOriginal) => ({
       garmin: { connected: true, last_synced_at: null, last_run_at: null, status: 'ok', error: null },
       counts: { activities: 0, recovery_days: 0 },
       agent_next_run: '2026-07-10T06:00:00Z',
+      manual_sync: false,
       agent_enabled: true,
     },
   }),

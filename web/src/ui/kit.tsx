@@ -77,17 +77,20 @@ export function Toggle({
   on,
   onChange,
   label,
+  disabled = false,
 }: {
   on: boolean;
   onChange: (next: boolean) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       role="switch"
       aria-checked={on}
       aria-label={label}
-      onClick={() => onChange(!on)}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!on)}
       style={{
         flex: 'none',
         width: 42,
@@ -98,6 +101,8 @@ export function Toggle({
         position: 'relative',
         transition: 'background .2s',
         padding: 0,
+        opacity: disabled ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
       }}
     >
       <span

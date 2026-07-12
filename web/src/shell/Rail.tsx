@@ -104,7 +104,7 @@ export function Rail() {
       <div style={{ marginTop: 'auto' }}>
         <div className="card--subtle" style={{ padding: 12 }}>
           <div className="mono-label" style={{ fontSize: 9, letterSpacing: '.14em' }}>
-            AGENT · {status?.agent_enabled === false ? 'PAUSED' : 'ARMED'}
+            AGENT · {status?.manual_sync ? 'MANUAL' : status?.agent_enabled === false ? 'PAUSED' : 'ARMED'}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
             <span
@@ -113,11 +113,12 @@ export function Rail() {
                 width: 7,
                 height: 7,
                 borderRadius: '50%',
-                background: status?.agent_enabled === false ? 'var(--faint)' : 'var(--green)',
+                background:
+                  status?.manual_sync || status?.agent_enabled === false ? 'var(--faint)' : 'var(--green)',
               }}
             />
             <span style={{ fontSize: 12, color: 'var(--text-2)' }}>
-              {nextRunLabel(status?.agent_next_run)}
+              {status?.manual_sync ? 'Run coach manually' : nextRunLabel(status?.agent_next_run)}
             </span>
           </div>
         </div>

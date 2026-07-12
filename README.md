@@ -139,6 +139,10 @@ Logs go to journald:
 journalctl --user -u helpmyrun -f
 ```
 
+### Manual mode (optional)
+
+Prefer to pull data and run the coach on your own schedule? Set `MANUAL_SYNC=true` in `.env`. The server then does **no** automatic Garmin sync and **no** automatic morning verdict — you press **Sync now** to pull data and **Run coach now** for a verdict (it uses your last sync). Nightly backups still run. The port is just `PORT` in `.env` (default `8080`) — change it to whatever you like.
+
 ### Remote access (Tailscale)
 
 Reach the app from your phone anywhere — private HTTPS on your tailnet, nothing exposed to the internet:

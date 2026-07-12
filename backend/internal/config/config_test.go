@@ -20,7 +20,7 @@ func setEnv(t *testing.T, kv map[string]string) {
 		"CLAUDE_BIN", "CLAUDE_MODEL", "IMAGE_DIR",
 		"STREAM_RECENT_WEEKS", "STREAM_FETCH_BUDGET",
 		"CHAT_HISTORY_TURNS",
-		"BACKUP_DIR", "BACKUP_KEEP",
+		"BACKUP_DIR", "BACKUP_KEEP", "MANUAL_SYNC",
 	}
 	for _, k := range all {
 		// t.Setenv first to register restoration of the original value on
@@ -268,5 +268,22 @@ func TestM6BackupConfigOverrides(t *testing.T) {
 	}
 	if got := cfg.ResolvedBackupDir(); got != "/mnt/nas/hmr" {
 		t.Errorf("ResolvedBackupDir() = %q, want explicit BACKUP_DIR", got)
+	}
+}
+
+func TestManualSyncDefaultAndOverride(t *testing.T) {
+	setEnv(t, requiredEnv())
+	if cfg, _ := Load(); cfg.ManualSync {
+		t.Error("ManualSync default = true, want false")
+	}
+	env := requiredEnv()
+	env["MANUAL_SYNC"] = "true"
+	setEnv(t, env)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.ManualSync {
+		t.Error("MANUAL_SYNC=true did not set cfg.ManualSync")
 	}
 }

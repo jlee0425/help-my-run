@@ -40,6 +40,11 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nextRun, agentEnabled := h.agentSchedule()
+	if h.d.ManualSync {
+		// M6.6: nothing runs on a schedule — don't advertise a next run or an
+		// "armed" agent, or the UI would promise a morning verdict that never comes.
+		nextRun, agentEnabled = nil, false
+	}
 
 	resp := statusResp{
 		Garmin: sourceStatus{
@@ -52,6 +57,7 @@ func (h *handlers) status(w http.ResponseWriter, r *http.Request) {
 		Counts:       statusCounts{Activities: activitiesCount, RecoveryDays: recoveryDays},
 		AgentNextRun: nextRun,
 		AgentEnabled: agentEnabled,
+		ManualSync:   h.d.ManualSync,
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
