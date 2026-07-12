@@ -53,7 +53,11 @@ test:
 # the enable one-liners (left to you so nothing is started behind your back).
 install: build
 	mkdir -p $(HOME)/.local/bin
-	cp bin/helpmyrun $(HOME)/.local/bin/helpmyrun
+	# Write then atomically rename: `cp` directly over a running binary fails
+	# with "Text file busy", so the rename is what makes `install` safe as an
+	# upgrade of a live service (the running process keeps its old inode).
+	cp bin/helpmyrun $(HOME)/.local/bin/helpmyrun.new
+	mv -f $(HOME)/.local/bin/helpmyrun.new $(HOME)/.local/bin/helpmyrun
 	mkdir -p $(HOME)/.config/systemd/user
 	sed 's|__WORKINGDIR__|$(CURDIR)|g' deploy/helpmyrun.service > $(HOME)/.config/systemd/user/helpmyrun.service
 	systemctl --user daemon-reload
@@ -61,9 +65,12 @@ install: build
 	@echo "Installed binary -> $(HOME)/.local/bin/helpmyrun"
 	@echo "Installed unit   -> $(HOME)/.config/systemd/user/helpmyrun.service"
 	@echo
-	@echo "Enable it (starts now + on every boot):"
+	@echo "First run — enable it (starts now + on every boot):"
 	@echo "    systemctl --user enable --now helpmyrun"
 	@echo "    loginctl enable-linger $$USER"
+	@echo
+	@echo "Upgrading an already-running instance? Pick up the new binary with:"
+	@echo "    systemctl --user restart helpmyrun"
 	@echo
 	@echo "Logs: journalctl --user -u helpmyrun -f"
 
